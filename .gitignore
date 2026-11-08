@@ -6,6 +6,8 @@ models/
 
 # Development scratch scripts and temporary captures
 scratch/
+tools/
+dist/
 
 # Operating system files
 .DS_Store
