@@ -2,6 +2,8 @@
 
 面向 SOOP (AfreecaTV)、Chzzk (Naver) 与 CI.ME 的独立多屏直播流媒体播放器（Chromium 浏览器扩展）。
 
+![KRStream 界面预览](sample.jpg)
+
 ---
 
 ## 核心特性
@@ -64,20 +66,26 @@ krstream/
 
 ---
 
-## 安装与运行
+## 安装与使用
 
-### 开发者模式加载
+### 方式一：下载 Release 压缩包（开箱即用，推荐）
 
-1. 下载或克隆本项目仓库到本地：
-   ```bash
-   git clone https://github.com/your-username/krstream.git
-   ```
-2. 打开 Chromium 内核浏览器（Chrome、Edge、Brave 等），在地址栏访问：
+1. 前往 [Releases](https://github.com/NB-XX/Kr_stream/releases) 页面，下载最新的 `krstream-v1.2.0.zip`。
+2. 将压缩包解压至任意本地目录。
+3. 打开 Chromium 内核浏览器（Chrome、Edge、Brave 等），地址栏访问扩展管理页面：
    - Chrome: `chrome://extensions/`
    - Edge: `edge://extensions/`
-3. 开启页面右上角的 **开发者模式 (Developer mode)**。
-4. 点击 **加载已解压的扩展程序 (Load unpacked)**，选择本项目的根目录文件夹。
-5. 点击浏览器右上角工具栏的扩展图标，即可直接打开独立播放工作台。
+4. 开启页面右上角的 **开发者模式 (Developer mode)**。
+5. 点击 **加载已解压的扩展程序 (Load unpacked)**，选择刚刚解压的文件夹目录。
+6. 点击浏览器右上角工具栏的扩展图标，即可直接进入独立多屏工作台。
+
+### 方式二：克隆源码运行
+
+1. 克隆代码仓库到本地：
+   ```bash
+   git clone https://github.com/NB-XX/Kr_stream.git
+   ```
+2. 参照上述步骤 3–6，直接在浏览器中加载克隆的代码目录即可。
 
 ---
 
