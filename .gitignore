@@ -1,0 +1,27 @@
+# Chrome / Edge extension metadata (auto-generated when unpacked)
+_metadata/
+
+# Offline models (large binary files exceeding GitHub 100MB limit)
+models/
+
+# Development scratch scripts and temporary captures
+scratch/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Logs and debug files
+*.log
+*.tmp
+*.bak
+
+# Node & dependencies
+node_modules/
+
+# IDE configurations
+.vscode/
+.idea/
+*.swp
+*.swo

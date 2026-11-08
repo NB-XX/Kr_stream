@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "KRStream - 韩国直播综合播放器 (SOOP / Chzzk / CI.ME)",
+  "version": "1.2.0",
+  "description": "面向 SOOP、Chzzk、CI.ME 平台的独立多屏流媒体播放器，支持多路同屏、原生实时双语字幕、弹幕表情渲染、独立 CDN 调度与时光机回看。",
+  "permissions": [
+    "storage",
+    "cookies",
+    "contextMenus",
+    "declarativeNetRequest",
+    "declarativeNetRequestWithHostAccess"
+  ],
+  "host_permissions": [
+    "*://*.sooplive.com/*",
+    "*://*.sooplive.co.kr/*",
+    "*://*.soop.co.kr/*",
+    "*://*.afreecatv.com/*",
+    "*://*.chzzk.naver.com/*",
+    "*://*.naver.com/*",
+    "*://*.ci.me/*",
+    "*://*.live-video.net/*",
+    "*://*.akamaized.net/*",
+    "*://*.cloudfront.net/*",
+    "*://*.pstatic.net/*",
+    "*://*.navercdn.com/*",
+    "*://translate.googleapis.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "打开 KRStream 独立播放工作台",
+    "default_icon": {
+      "16": "icons/icon16.png",
+      "32": "icons/icon32.png",
+      "48": "icons/icon48.png",
+      "128": "icons/icon128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon16.png",
+    "32": "icons/icon32.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "declarative_net_request": {
+    "rule_resources": [
+      {
+        "id": "krstream_rules",
+        "enabled": true,
+        "path": "rules/declarative_net_rules.json"
+      }
+    ]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*"
+      ],
+      "matches": ["<all_urls>"]
+    }
+  ]
+}

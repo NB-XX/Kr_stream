@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KRStream Direct</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="popup-container">
+    <!-- 头部 -->
+    <header class="popup-header">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z"/>
+        </svg>
+        <span>KRStream Direct</span>
+      </div>
+      <div class="version">v1.0.0</div>
+    </header>
+
+    <!-- 选项卡导航 -->
+    <nav class="nav-tabs">
+      <button class="tab-btn active" data-tab="resolve">直连解析</button>
+      <button class="tab-btn" data-tab="favorites">关注列表</button>
+      <button class="tab-btn" data-tab="settings">加速设置</button>
+    </nav>
+
+    <!-- Tab 1: 直连解析 -->
+    <section class="tab-pane active" id="pane-resolve">
+      <div class="input-group">
+        <input type="text" id="input-stream" placeholder="粘贴 SOOP / Chzzk / CI.ME 链接或ID..." />
+        <button id="btn-resolve" class="btn-primary">解析</button>
+      </div>
+
+      <!-- 解析结果展示卡片 -->
+      <div class="result-card" id="result-card" style="display: none;">
+        <div class="result-header">
+          <img class="result-avatar" id="res-avatar" src="../icons/icon48.png" alt="" />
+          <div class="result-meta">
+            <div class="result-top">
+              <span class="platform-badge" id="res-platform">SOOP</span>
+              <span class="result-name" id="res-name">主播名</span>
+              <span class="live-status" id="res-status">● 直播中</span>
+            </div>
+            <div class="result-title" id="res-title">直播间标题</div>
+          </div>
+        </div>
+
+        <div class="result-actions">
+          <button class="action-btn highlight" id="btn-play-single">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+            独立播放
+          </button>
+          <button class="action-btn" id="btn-play-dual">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M4 6h7v12H4zm9 0h7v12h-7z"/></svg>
+            二路副屏
+          </button>
+          <button class="action-btn" id="btn-copy-m3u8">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+            复制直链
+          </button>
+          <button class="action-btn" id="btn-fav-add">
+            ⭐ 关注
+          </button>
+        </div>
+      </div>
+
+      <div class="tips-box">
+        <p>💡 支持直接输入直播间 URL 或纯 ID：</p>
+        <ul>
+          <li><strong>SOOP</strong>: <code>play.sooplive.com/streamerID</code></li>
+          <li><strong>Chzzk</strong>: <code>chzzk.naver.com/live/32位ID</code></li>
+          <li><strong>CI.ME</strong>: <code>ci.me/@channel_slug</code></li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- Tab 2: 关注列表 -->
+    <section class="tab-pane" id="pane-favorites">
+      <div class="fav-header-bar">
+        <span id="fav-count">已关注 0 位主播</span>
+        <button class="btn-text" id="btn-refresh-favs">↻ 刷新开播状态</button>
+      </div>
+      <div class="fav-list" id="popup-fav-list">
+        <!-- 动态填充 -->
+      </div>
+    </section>
+
+    <!-- Tab 3: 加速与增强设置 -->
+    <section class="tab-pane" id="pane-settings">
+      <div class="settings-group">
+        <label class="setting-item">
+          <div class="setting-info">
+            <div class="setting-title">中国访问加速 (屏蔽慢速追踪与广告)</div>
+            <div class="setting-desc">拦截 collector1、time.akamai、analysis 等导致页面卡死的请求</div>
+          </div>
+          <input type="checkbox" id="set-block-trackers" checked />
+        </label>
+
+        <label class="setting-item">
+          <div class="setting-info">
+            <div class="setting-title">SOOP 锁定原画 1080p60 (禁止 ABR 降画质)</div>
+            <div class="setting-desc">剔除低码率分流，防止网络抖动时官方播放器自动降至 360p</div>
+          </div>
+          <input type="checkbox" id="set-force-quality" checked />
+        </label>
+
+        <label class="setting-item">
+          <div class="setting-info">
+            <div class="setting-title">SOOP 首选加速 CDN 节点</div>
+            <div class="setting-desc">Global 节点经测试在中国大陆访问平均延迟最低、最顺畅</div>
+          </div>
+          <select id="set-soop-cdn" class="setting-select">
+            <option value="global">Global (大陆加速首选)</option>
+            <option value="global_kr">Global KR</option>
+            <option value="kr_zone">KR Zone (韩国首尔)</option>
+          </select>
+        </label>
+
+        <label class="setting-item">
+          <div class="setting-info">
+            <div class="setting-title">启用 Web Audio 音量增强器 (超频放大)</div>
+            <div class="setting-desc">支持将 VTuber 较轻的声音增益放大至 300%</div>
+          </div>
+          <input type="checkbox" id="set-audio-boost" checked />
+        </label>
+      </div>
+      <button class="btn-primary full-width" id="btn-save-settings">保存配置</button>
+    </section>
+  </div>
+
+  <script type="module" src="popup.js"></script>
+</body>
+</html>

@@ -1,0 +1,20 @@
+{
+  "name": "krstream",
+  "version": "1.2.0",
+  "description": "Multi-stream live player extension for SOOP, Chzzk, and CI.ME",
+  "type": "module",
+  "scripts": {
+    "test": "node tests/integration.test.js && node tests/subtitle.test.js"
+  },
+  "keywords": [
+    "soop",
+    "afreecatv",
+    "chzzk",
+    "cime",
+    "live-stream",
+    "danmaku",
+    "subtitles",
+    "chrome-extension"
+  ],
+  "license": "MIT"
+}

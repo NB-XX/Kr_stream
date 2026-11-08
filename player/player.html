@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KRStream Studio - 多屏直播监控工作台</title>
+  <link rel="stylesheet" href="player.css">
+  <script src="../vendor/hls.min.js"></script>
+  <script src="../vendor/mux.min.js"></script>
+</head>
+<body class="theme-dark">
+  <div class="workspace-layout">
+    <!-- 左侧：关注主播与控制台 -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <span class="brand-prefix">KR</span>
+          <span class="brand-name">STREAM</span>
+          <span class="brand-version">PRO</span>
+        </div>
+        <button class="btn-icon" id="btn-toggle-sidebar" title="收起边栏">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M10 3L5 8l5 5"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- 账号凭证与状态面板 -->
+      <div class="accounts-card">
+        <div class="accounts-header">
+          <span class="section-label">PLATFORM ACCOUNTS</span>
+          <button class="btn-link" id="btn-detect-accounts" title="重新检测浏览器登录 Cookie">刷新凭证</button>
+        </div>
+        <div class="accounts-grid">
+          <div class="acc-badge" id="acc-soop" title="SOOP 账号">
+            <span class="status-dot"></span>
+            <span class="name">SOOP: 检测中...</span>
+          </div>
+          <div class="acc-badge" id="acc-chzzk" title="Chzzk Naver 账号">
+            <span class="status-dot"></span>
+            <span class="name">CHZZK: 检测中...</span>
+          </div>
+          <div class="acc-badge" id="acc-cime" title="CI.ME 账号">
+            <span class="status-dot"></span>
+            <span class="name">CI.ME: 检测中...</span>
+          </div>
+        </div>
+        <button class="btn-primary btn-sync-all" id="btn-sync-all">
+          <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M1.5 8a6.5 6.5 0 0111.4-4.3L14.5 5M14.5 1.5V5h-3.5M14.5 8a6.5 6.5 0 01-11.4 4.3L1.5 11M1.5 14.5V11H5"/>
+          </svg>
+          <span id="sync-btn-text">一键导入并同步关注主播</span>
+        </button>
+        <div class="sync-auto-indicator">
+          <span class="sync-dot"></span>
+          <span>状态监控轮询中 (20s)</span>
+        </div>
+      </div>
+
+      <!-- 直播源输入 -->
+      <div class="sidebar-search">
+        <input type="text" id="custom-stream-input" placeholder="输入直播链接或主播 ID..." spellcheck="false" autocomplete="off" />
+        <button id="btn-custom-play" class="btn-secondary">播放</button>
+      </div>
+
+      <!-- 过滤标签 -->
+      <div class="filter-tabs">
+        <button class="filter-btn active" data-filter="all">全部 <span class="tab-count" id="count-all">0</span></button>
+        <button class="filter-btn highlight" data-filter="live"><span class="live-dot-inline"></span>直播 <span class="tab-count" id="count-live">0</span></button>
+        <button class="filter-btn" data-filter="soop">SOOP</button>
+        <button class="filter-btn" data-filter="chzzk">CHZZK</button>
+        <button class="filter-btn" data-filter="cime">CI.ME</button>
+      </div>
+
+      <!-- 主播列表容器 -->
+      <div class="streamer-list" id="streamer-list">
+        <div class="empty-state">
+          点击上方【一键导入并同步关注主播】，或在输入栏粘贴直播间链接开始播放。
+        </div>
+      </div>
+    </aside>
+
+    <!-- 右侧：多屏视口主界面 -->
+    <div class="main-content">
+      <!-- 顶部控制条 -->
+      <header class="top-bar">
+        <div class="top-left">
+          <!-- 多屏网格切换器 -->
+          <div class="grid-layout-presets">
+            <span class="layout-label">LAYOUT</span>
+            <button class="preset-btn active" data-layout="1" title="单屏展示">1P</button>
+            <button class="preset-btn" data-layout="2" title="双屏并列">2P</button>
+            <button class="preset-btn" data-layout="3" title="三屏组合">3P</button>
+            <button class="preset-btn" data-layout="4" title="四屏矩阵 (2x2)">4P</button>
+            <button class="preset-btn" data-layout="6" title="六屏矩阵 (3x2)">6P</button>
+            <button class="preset-btn" data-layout="auto" title="自适应网格">AUTO</button>
+          </div>
+
+          <button class="btn-secondary" id="btn-add-window" title="在网格中新增一个独立播放窗口">
+            <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M8 2v12M2 8h12"/>
+            </svg>
+            <span>新增窗口</span>
+          </button>
+        </div>
+
+        <div class="top-right">
+          <button class="btn-subtle" id="btn-clear-all" title="重置并清空所有窗口">清空网格</button>
+        </div>
+      </header>
+
+      <!-- 动态多屏网格视口 -->
+      <div class="viewport-grid layout-1" id="viewport-grid">
+        <!-- 窗口由 SlotManager 动态管理 -->
+      </div>
+    </div>
+
+    <!-- 左侧收起后浮动展开按钮 -->
+    <button class="sidebar-expand-tab" id="btn-expand-sidebar" title="展开关注主播列表">
+      <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+        <path d="M6 3l5 5-5 5"/>
+      </svg>
+      <span>主播列表</span>
+    </button>
+
+    <!-- 右侧：字幕历史与长图导出侧边抽屉 -->
+    <aside class="right-drawer" id="right-drawer">
+      <div class="drawer-header">
+        <div class="drawer-title">
+          <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+            <path d="M2.5 3.5h11M2.5 7h7M2.5 10.5h11M2.5 14h6"/>
+          </svg>
+          <span>历史转录字幕</span>
+        </div>
+        <div class="drawer-header-actions">
+          <select class="drawer-slot-select" id="drawer-slot-select" title="选择查看窗口"></select>
+          <button class="btn-icon" id="btn-close-right-drawer" title="收起字幕抽屉">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 4l8 8M12 4l-8 8"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <div class="drawer-toolbar">
+        <div class="drawer-buffer-info">
+          <span class="status-dot live"></span>
+          <span>本地缓存: 10分钟实时回溯 (点击字幕跳转播放)</span>
+        </div>
+        <div class="drawer-search-bar">
+          <input type="text" id="sub-search-input" placeholder="搜索历史字幕关键词..." spellcheck="false" autocomplete="off" />
+        </div>
+        <div class="drawer-batch-actions">
+          <div class="batch-select-wrap">
+            <button class="btn-chip" id="btn-sub-select-all">全选</button>
+            <button class="btn-chip" id="btn-sub-clear-select">清空</button>
+            <span class="selected-count-label" id="selected-sub-count">已选: 0</span>
+          </div>
+          <button class="btn-primary btn-gen-long-image" id="btn-gen-long-image" title="将所选字幕与对应画面批量拼接为长图">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="2" y="2" width="12" height="12" rx="1.5"/>
+              <path d="M2 11l3.5-3.5a1 1 0 011.4 0l4.5 4.5"/>
+              <circle cx="5" cy="5.5" r="1"/>
+            </svg>
+            <span>转换字幕长图</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="drawer-sub-list" id="drawer-sub-list">
+        <div class="sub-empty-tip">暂无转录字幕记录，开启实时字幕后自动记录...</div>
+      </div>
+    </aside>
+
+    <!-- 字幕长图生成模态弹窗 -->
+    <div class="modal-overlay" id="modal-long-image" style="display:none;">
+      <div class="modal-box long-image-modal-box">
+        <div class="modal-header">
+          <div class="modal-title">字幕长图生成器</div>
+          <button class="btn-icon" id="btn-close-modal">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 4l8 8M12 4l-8 8"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body long-image-modal-body">
+          <div class="long-image-preview-wrap">
+            <canvas id="long-image-canvas" style="display:none;"></canvas>
+            <img id="long-image-preview-img" alt="字幕长图预览" />
+          </div>
+        </div>
+        <div class="modal-footer">
+          <div class="long-image-opts">
+            <label><input type="radio" name="long-img-style" value="movie" checked> 经典台词切片模式 (首图完整+台词截条)</label>
+            <label><input type="radio" name="long-img-style" value="stacked"> 全画面平铺模式 (每句对应完整截帧)</label>
+          </div>
+          <div class="modal-btn-group">
+            <button class="btn-secondary" id="btn-copy-long-image">复制长图到剪贴板</button>
+            <button class="btn-primary" id="btn-download-long-image">下载长图 (PNG)</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="player.js"></script>
+</body>
+</html>
