@@ -284,7 +284,7 @@ class StreamSlot {
     const btnPlayPause = this.dom.querySelector(`#btn-playpause-${this.slotId}`);
     btnPlayPause.addEventListener('click', () => {
       if (this.video.paused) {
-        this.video.play();
+        this.video.play().catch(() => {});
         btnPlayPause.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
         this.isUserPaused = false;
         this.wasPausedResume = true;
@@ -295,8 +295,8 @@ class StreamSlot {
         if (this.hls) {
           this.hls.config.maxBufferLength = 600;
           this.hls.config.maxMaxBufferLength = 600;
-          this.hls.config.liveMaxLatencyDuration = 600;
           this.hls.config.liveMaxLatencyDurationCount = 300;
+          this.hls.config.maxBufferSize = 500 * 1000 * 1000;
         }
       }
     });
@@ -737,18 +737,23 @@ class StreamSlot {
         enableWorker: true,
         lowLatencyMode: !isReplay,
         backBufferLength: 600, // 本地保留 10 分钟 (600秒) 历史缓存
-        maxBufferLength: 600, // 允许最大 10 分钟本地缓存 (暂停时持续存入 MSE)
-        maxMaxBufferLength: 600, // 突破上限，避免 Hls.js 提前停止下载
-        maxBufferSize: 600 * 1000 * 1000, // 600MB 内存支持 1080p60 10分钟高码率
+        maxBufferLength: isReplay ? 60 : (this.isLowLatencyMode ? 10 : 30),
+        maxMaxBufferLength: 600, // 暂停时支持扩展至 600 秒
+        maxBufferSize: 60 * 1000 * 1000,
         liveSyncDurationCount: this.isLowLatencyMode ? 1.5 : 3.0,
-        liveMaxLatencyDuration: 600, // 关键：允许延迟最大 10 分钟，暂停时不强制跳跃到最新直播边缘
-        liveMaxLatencyDurationCount: 300, // 关键：防止 Hls.js 内部看门狗在暂停几秒后自动强制跳跃
+        liveMaxLatencyDurationCount: this.isLowLatencyMode ? 4.0 : 8.0,
         xhrSetup: function (xhr) {
           xhr.withCredentials = false;
         }
       };
 
-      this.hls = new Hls(hlsConfig);
+      try {
+        this.hls = new Hls(hlsConfig);
+      } catch (e) {
+        console.error(`[KRStream] 初始化 Hls 实例失败:`, e);
+        this.showLoading(`播放器初始化失败: ${e.message}`);
+        return;
+      }
 
       this.hls.loadSource(url);
       this.hls.attachMedia(this.video);
@@ -759,7 +764,14 @@ class StreamSlot {
         if (options.startPosition !== undefined) {
           this.video.currentTime = options.startPosition;
         }
-        this.video.play().catch(() => {});
+        const playPromise = this.video.play();
+        if (playPromise !== undefined) {
+          playPromise.catch((err) => {
+            console.warn(`[KRStream] 窗口 #${this.slotId} 自动播放受阻，降级静音自动播放:`, err);
+            this.video.muted = true;
+            this.video.play().catch(() => {});
+          });
+        }
       });
 
       this.hls.on(Hls.Events.LEVEL_LOADED, (event, data) => {
@@ -773,6 +785,11 @@ class StreamSlot {
             this.replaySlider.min = Math.floor(start);
             this.replaySlider.max = Math.ceil(end);
             this.replayTotalDuration = end - start;
+          }
+        } else if (!isReplay && data.details && this.video.currentTime === 0) {
+          const livePos = this.hls.liveSyncPosition;
+          if (typeof livePos === 'number' && livePos > 0) {
+            this.video.currentTime = livePos;
           }
         }
       });
@@ -955,11 +972,10 @@ class StreamSlot {
     if (this.isCatchReplayMode) return;
     if (this.hls) {
       this.hls.config.backBufferLength = 600;
-      this.hls.config.maxBufferLength = 600;
+      this.hls.config.maxBufferLength = this.isLowLatencyMode ? 10 : 30;
       this.hls.config.maxMaxBufferLength = 600;
-      this.hls.config.maxBufferSize = 600 * 1000 * 1000;
-      this.hls.config.liveMaxLatencyDuration = 600;
-      this.hls.config.liveMaxLatencyDurationCount = 300;
+      this.hls.config.maxBufferSize = 60 * 1000 * 1000;
+      this.hls.config.liveMaxLatencyDurationCount = this.isLowLatencyMode ? 4.0 : 8.0;
 
       if (this.isLowLatencyMode) {
         this.hls.config.liveSyncDurationCount = 1.5;
