@@ -69,13 +69,18 @@ export class StreamResolver {
       throw new Error('无法识别输入内容，请输入正确的直播间链接或主播ID');
     }
 
+    const mergedOptions = { ...options };
+    if (parsed.broadNo && !mergedOptions.broadNo) {
+      mergedOptions.broadNo = parsed.broadNo;
+    }
+
     switch (parsed.platform) {
       case 'soop':
-        return await this.resolveSoop(parsed.id, options);
+        return await this.resolveSoop(parsed.id, mergedOptions);
       case 'chzzk':
-        return await this.resolveChzzk(parsed.id, options);
+        return await this.resolveChzzk(parsed.id, mergedOptions);
       case 'cime':
-        return await this.resolveCime(parsed.id, options);
+        return await this.resolveCime(parsed.id, mergedOptions);
       default:
         throw new Error(`暂不支持该平台: ${parsed.platform}`);
     }
@@ -85,10 +90,14 @@ export class StreamResolver {
     if (!input || typeof input !== 'string') return null;
     const str = input.trim();
 
-    // 1. SOOP 匹配
-    const soopMatch = str.match(/(?:play\.)?(?:sooplive\.(?:com|co\.kr)|afreecatv\.com)\/([a-zA-Z0-9_]+)/i);
+    // 1. SOOP 匹配 (支持 play.sooplive.com/id, play.sooplive.com/id/12345678, sooplive.co.kr/id 等格式)
+    const soopMatch = str.match(/(?:play\.)?(?:sooplive\.(?:com|co\.kr)|afreecatv\.com)\/([a-zA-Z0-9_]+)(?:\/([0-9]+))?/i);
     if (soopMatch && soopMatch[1] && !['watch', 'vod', 'video'].includes(soopMatch[1].toLowerCase())) {
-      return { platform: 'soop', id: soopMatch[1] };
+      return {
+        platform: 'soop',
+        id: soopMatch[1],
+        broadNo: soopMatch[2] || undefined
+      };
     }
 
     // 2. Chzzk 匹配
@@ -137,7 +146,7 @@ export class StreamResolver {
           'Origin': 'https://ch.sooplive.co.kr',
           'Referer': `https://ch.sooplive.co.kr/${cleanId}`
         },
-        credentials: 'include'
+        credentials: 'omit'
       });
       if (stRes.ok) {
         const stData = await stRes.json();
@@ -160,49 +169,69 @@ export class StreamResolver {
       console.warn('[SOOP] 查询 Station API 降级:', e);
     }
 
-    // 第一步: 查询 live API
+    // 第一步: 查询 live API (附带韩国住宅/机房 IP 标头与 geo_cc: KR，破除海外 IP / 区域锁限制)
     const endpoints = [
-      `https://live.sooplive.com/afreeca/player_live_api.php?bjid=${encodeURIComponent(cleanId)}`,
-      `https://live.sooplive.co.kr/afreeca/player_live_api.php?bjid=${encodeURIComponent(cleanId)}`
+      `https://live.sooplive.co.kr/afreeca/player_live_api.php?bjid=${encodeURIComponent(cleanId)}`,
+      `https://live.sooplive.com/afreeca/player_live_api.php?bjid=${encodeURIComponent(cleanId)}`
     ];
 
+    const geoCandidateIps = ['211.234.118.1', '121.134.0.1', '118.235.0.1'];
     let channel = null;
     let lastErr = null;
 
     for (const ep of endpoints) {
-      try {
-        const body1 = new URLSearchParams({
-          bid: cleanId,
-          bno: bnoFromStation,
-          type: 'live',
-          pwd: '',
-          player_type: 'html5',
-          stream_type: 'common',
-          quality: 'HD',
-          mode: 'landing',
-          from_api: '0',
-          is_revive: 'false'
-        });
+      for (const ip of geoCandidateIps) {
+        try {
+          const body1 = new URLSearchParams({
+            bid: cleanId,
+            bno: bnoFromStation,
+            type: 'live',
+            pwd: '',
+            player_type: 'html5',
+            stream_type: 'common',
+            quality: 'HD',
+            mode: 'landing',
+            from_api: '0',
+            is_revive: 'false',
+            geo_cc: 'KR',
+            geo_rc: '',
+            acpt_lang: 'ko_KR',
+            svc_lang: 'ko_KR'
+          });
 
-        const res1 = await fetch(ep, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://play.sooplive.com',
-            'Referer': `https://play.sooplive.com/${cleanId}`
-          },
-          body: body1.toString(),
-          credentials: 'include'
-        });
+          const res1 = await fetch(ep, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/x-www-form-urlencoded',
+              'Origin': 'https://play.sooplive.com',
+              'Referer': `https://play.sooplive.com/${cleanId}`,
+              'X-Forwarded-For': ip,
+              'Client-IP': ip,
+              'X-Real-IP': ip
+            },
+            body: body1.toString(),
+            credentials: 'omit'
+          });
 
-        const data1 = await res1.json();
-        if (data1?.CHANNEL) {
-          channel = data1.CHANNEL;
-          break;
+          const data1 = await res1.json();
+          if (data1?.CHANNEL) {
+            if (data1.CHANNEL.RESULT === 1) {
+              channel = data1.CHANNEL;
+              break;
+            } else if (data1.CHANNEL.RESULT === -2) {
+              // 遭遇海外地区限制，使用韩国节点 IP 破限重试
+              console.warn(`[SOOP] 频道 ${cleanId} 遭遇海外地区限制 (RESULT=-2)，切换至韩国节点 ${ip} 进行破限重试...`);
+              continue;
+            } else {
+              channel = data1.CHANNEL;
+              break;
+            }
+          }
+        } catch (err) {
+          lastErr = err;
         }
-      } catch (err) {
-        lastErr = err;
       }
+      if (channel && channel.RESULT === 1) break;
     }
 
     if (!channel) {
@@ -212,6 +241,9 @@ export class StreamResolver {
     if (channel.RESULT !== 1) {
       if (channel.RESULT === -6) {
         throw new Error('该 SOOP 直播需要登录或有年龄/订阅限制，请在浏览器中登录 SOOP 账号后重试');
+      }
+      if (channel.RESULT === -2) {
+        throw new Error('该 SOOP 直播间受主播海外区域锁严格限制，已尝试多路韩国节点调度');
       }
       return {
         platform: 'soop',
@@ -226,12 +258,12 @@ export class StreamResolver {
     const bno = channel.BNO || bnoFromStation;
     const bjNick = channel.BJNICK || streamerFromStation;
     const title = channel.TITLE || titleFromStation;
-    const rmd = channel.RMD || '';
+    const rmd = channel.RMD || 'https://livestream-manager.sooplive.com';
     const rawCdn = channel.CDN || 'gs_cdn';
     const cdnKey = CDN_MAPPING[rawCdn] || rawCdn;
     const btime = parseInt(channel.BTIME || '0', 10);
 
-    // 第二步: 获取播放鉴权 AID Token
+    // 第二步: 获取播放鉴权 AID Token (继承韩国地区破限身份)
     const aidEp = endpoints[0];
     const body2 = new URLSearchParams({
       bid: cleanId,
@@ -243,7 +275,8 @@ export class StreamResolver {
       quality: 'original',
       mode: 'landing',
       from_api: '0',
-      is_revive: 'false'
+      is_revive: 'false',
+      geo_cc: 'KR'
     });
 
     const res2 = await fetch(aidEp, {
@@ -251,10 +284,13 @@ export class StreamResolver {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'Origin': 'https://play.sooplive.com',
-        'Referer': `https://play.sooplive.com/${cleanId}`
+        'Referer': `https://play.sooplive.com/${cleanId}`,
+        'X-Forwarded-For': '211.234.118.1',
+        'Client-IP': '211.234.118.1',
+        'X-Real-IP': '211.234.118.1'
       },
       body: body2.toString(),
-      credentials: 'include'
+      credentials: 'omit'
     });
 
     const data2 = await res2.json();
@@ -268,9 +304,12 @@ export class StreamResolver {
     const res3 = await fetch(assignUrl, {
       headers: {
         'Origin': 'https://play.sooplive.com',
-        'Referer': 'https://play.sooplive.com/'
+        'Referer': `https://play.sooplive.com/${cleanId}`,
+        'X-Forwarded-For': '211.234.118.1',
+        'Client-IP': '211.234.118.1',
+        'X-Real-IP': '211.234.118.1'
       },
-      credentials: 'include'
+      credentials: 'omit'
     });
     const assignData = await res3.json();
     let viewUrl = assignData?.view_url;

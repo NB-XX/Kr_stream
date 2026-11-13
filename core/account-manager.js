@@ -64,7 +64,7 @@ export class AccountManager {
     try {
       const extensionId = chrome.runtime.id;
       const rulesToAdd = [];
-      const ruleIdsToRemove = [10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010];
+      const ruleIdsToRemove = [10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012];
 
       // 1. Chzzk API 动态凭证注入规则 (Rule 10001)
       const chzzkCookie = await this.getCookieString(['naver.com', 'chzzk.naver.com']);
@@ -93,7 +93,7 @@ export class AccountManager {
         }
       });
 
-      // 2. SOOP .com API & 关注列表凭证注入规则 (Rule 10002)
+      // 2. SOOP Web API & 关注列表凭证注入规则 (Rule 10002 - 严格限定 API 路径，绝不污染 HLS 直播切片流)
       const soopCookie = await this.getCookieString(['sooplive.com', 'sooplive.co.kr', 'afreecatv.com']);
       const soopComHeaders = [
         { header: 'Origin', operation: 'set', value: 'https://www.sooplive.com' },
@@ -111,30 +111,48 @@ export class AccountManager {
           requestHeaders: soopComHeaders
         },
         condition: {
-          urlFilter: 'sooplive.com',
+          regexFilter: '^https://(?:api|myapi|chapi|live|login)[.]sooplive[.](?:com|co[.]kr)/(?:api/|station|favorite|preferbj)',
           initiatorDomains: [extensionId],
           resourceTypes: ['xmlhttprequest', 'other']
         }
       });
 
-      // 3. SOOP .co.kr API 凭证注入规则 (Rule 10003)
-      const soopKrHeaders = [
-        { header: 'Origin', operation: 'set', value: 'https://www.sooplive.co.kr' },
-        { header: 'Referer', operation: 'set', value: 'https://www.sooplive.co.kr/' },
-        { header: 'Accept', operation: 'set', value: 'application/json, text/plain, */*' }
-      ];
-      if (soopCookie) {
-        soopKrHeaders.push({ header: 'Cookie', operation: 'set', value: soopCookie });
-      }
+      // 3. SOOP 直播解析与海外破限专有规则 (Rule 10003 & 10011: 注入韩国住宅 IP 破除海外区域锁)
       rulesToAdd.push({
         id: 10003,
-        priority: 25,
+        priority: 28,
         action: {
           type: 'modifyHeaders',
-          requestHeaders: soopKrHeaders
+          requestHeaders: [
+            { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
+            { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' },
+            { header: 'X-Forwarded-For', operation: 'set', value: '211.234.118.1' },
+            { header: 'Client-IP', operation: 'set', value: '211.234.118.1' },
+            { header: 'X-Real-IP', operation: 'set', value: '211.234.118.1' }
+          ]
         },
         condition: {
-          urlFilter: 'sooplive.co.kr',
+          urlFilter: 'player_live_api.php',
+          initiatorDomains: [extensionId],
+          resourceTypes: ['xmlhttprequest', 'other']
+        }
+      });
+
+      rulesToAdd.push({
+        id: 10011,
+        priority: 28,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
+            { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' },
+            { header: 'X-Forwarded-For', operation: 'set', value: '211.234.118.1' },
+            { header: 'Client-IP', operation: 'set', value: '211.234.118.1' },
+            { header: 'X-Real-IP', operation: 'set', value: '211.234.118.1' }
+          ]
+        },
+        condition: {
+          urlFilter: 'broad_stream_assign.html',
           initiatorDomains: [extensionId],
           resourceTypes: ['xmlhttprequest', 'other']
         }

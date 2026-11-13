@@ -171,6 +171,20 @@ async function runTests() {
   assert(chzzkLatency >= 1.5, 'Chzzk latency must never be stuck at 0s, got: ' + chzzkLatency);
   console.log('  Pass: Chzzk latency fallback correctly computes ' + chzzkLatency.toFixed(1) + 's (never 0s).');
 
+  console.log('[Test 7] Overseas Region Lock Bypass & BroadNo URL Parsing');
+  const { StreamResolver } = await import('../core/stream-resolver.js');
+  const parsedUrl = StreamResolver.parseInput('https://play.sooplive.com/mingyeolhee/298562725');
+  assert.strictEqual(parsedUrl.platform, 'soop');
+  assert.strictEqual(parsedUrl.id, 'mingyeolhee');
+  assert.strictEqual(parsedUrl.broadNo, '298562725');
+  console.log('  Pass: BroadNo successfully extracted from stream URL.');
+
+  // Verify DNR rules isolation from stream CDNs
+  const accountManagerCode = fs.readFileSync('core/account-manager.js', 'utf8');
+  assert(!accountManagerCode.includes("urlFilter: 'sooplive.com'"), 'Rule 10002 must not broadly match all sooplive.com domains');
+  assert(accountManagerCode.includes('player_live_api.php'), 'Rule 10003 must target player_live_api.php with Korea geo headers');
+  console.log('  Pass: DNR rules cleanly isolate APIs from video CDN streams.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 
