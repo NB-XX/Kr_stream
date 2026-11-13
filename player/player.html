@@ -67,9 +67,9 @@
       <div class="filter-tabs">
         <button class="filter-btn active" data-filter="all">全部 <span class="tab-count" id="count-all">0</span></button>
         <button class="filter-btn highlight" data-filter="live"><span class="live-dot-inline"></span>直播 <span class="tab-count" id="count-live">0</span></button>
-        <button class="filter-btn" data-filter="soop">SOOP</button>
-        <button class="filter-btn" data-filter="chzzk">CHZZK</button>
-        <button class="filter-btn" data-filter="cime">CI.ME</button>
+        <button class="filter-btn" data-filter="soop">SOOP <span class="tab-count" id="count-soop">0</span></button>
+        <button class="filter-btn" data-filter="chzzk">CHZZK <span class="tab-count" id="count-chzzk">0</span></button>
+        <button class="filter-btn" data-filter="cime">CI.ME <span class="tab-count" id="count-cime">0</span></button>
       </div>
 
       <!-- 主播列表容器 -->
@@ -85,15 +85,19 @@
       <!-- 顶部控制条 -->
       <header class="top-bar">
         <div class="top-left">
-          <!-- 多屏网格切换器 -->
-          <div class="grid-layout-presets">
-            <span class="layout-label">LAYOUT</span>
-            <button class="preset-btn active" data-layout="1" title="单屏展示">1P</button>
-            <button class="preset-btn" data-layout="2" title="双屏并列">2P</button>
-            <button class="preset-btn" data-layout="3" title="三屏组合">3P</button>
-            <button class="preset-btn" data-layout="4" title="四屏矩阵 (2x2)">4P</button>
-            <button class="preset-btn" data-layout="6" title="六屏矩阵 (3x2)">6P</button>
-            <button class="preset-btn" data-layout="auto" title="自适应网格">AUTO</button>
+          <!-- 布局模板管理器 (支持将多屏窗口及主播搭配保存为独立模板随时切换) -->
+          <div class="layout-template-bar">
+            <span class="layout-label">布局模板</span>
+            <select class="template-select" id="template-select" title="选择或切换已保存的多屏布局模板">
+              <option value="current">当前工作区</option>
+            </select>
+            <button class="btn-secondary" id="btn-save-template" title="将当前窗口中的主播组合与排布保存为新模板">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
+                <path d="M3 2h8l3 3v9H2V2h1zM4 2v4h6V2M5 14v-5h6v5"/>
+              </svg>
+              <span>保存模板</span>
+            </button>
+            <button class="btn-subtle" id="btn-delete-template" title="删除选中的模板" style="display:none;">删除模板</button>
           </div>
 
           <button class="btn-secondary" id="btn-add-window" title="在网格中新增一个独立播放窗口">

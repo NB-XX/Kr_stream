@@ -14,7 +14,7 @@ AccountManager.setupAllDynamicRules().catch(() => {});
 if (typeof chrome !== 'undefined' && chrome.cookies?.onChanged) {
   chrome.cookies.onChanged.addListener((changeInfo) => {
     const domain = changeInfo?.cookie?.domain || '';
-    if (domain.includes('sooplive') || domain.includes('afreecatv') || domain.includes('naver')) {
+    if (domain.includes('sooplive') || domain.includes('afreecatv') || domain.includes('naver') || domain.includes('ci.me')) {
       AccountManager.setupAllDynamicRules().catch(() => {});
     }
   });

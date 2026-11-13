@@ -179,19 +179,25 @@ export class AccountManager {
         }
       });
 
-      // 6. CI.ME API 规范规则 (Rule 10006)
+      // 6. CI.ME API 规范与凭证注入规则 (Rule 10006)
+      const cimeCookie = await this.getCookieString(['ci.me', '.ci.me', 'www.ci.me']);
+      const cimeHeaders = [
+        { header: 'Origin', operation: 'set', value: 'https://ci.me' },
+        { header: 'Referer', operation: 'set', value: 'https://ci.me/' },
+        { header: 'Accept', operation: 'set', value: 'application/json, text/plain, */*' }
+      ];
+      if (cimeCookie) {
+        cimeHeaders.push({ header: 'Cookie', operation: 'set', value: cimeCookie });
+      }
       rulesToAdd.push({
         id: 10006,
         priority: 25,
         action: {
           type: 'modifyHeaders',
-          requestHeaders: [
-            { header: 'Origin', operation: 'set', value: 'https://ci.me' },
-            { header: 'Referer', operation: 'set', value: 'https://ci.me/' }
-          ]
+          requestHeaders: cimeHeaders
         },
         condition: {
-          urlFilter: '||ci.me/api/',
+          urlFilter: 'ci.me/api/',
           initiatorDomains: [extensionId],
           resourceTypes: ['xmlhttprequest', 'other']
         }
@@ -575,48 +581,61 @@ export class AccountManager {
   }
 
   /**
-   * 拉取 CI.ME 关注频道列表 (未登录或为空时回退推荐频道)
+   * 拉取 CI.ME 关注频道列表 (仅拉取已登录关注，未登录或为空时不包含推荐主播)
    */
   static async fetchCimeFollowings() {
     let channels = [];
-    try {
-      const res = await fetch('https://ci.me/api/app/channels/following', {
-        headers: { 'Accept': 'application/json' },
-        credentials: 'include'
-      });
-      if (res.ok) {
-        const json = await res.json();
-        channels = json.data || [];
-      }
-    } catch (e) {}
+    const endpoints = [
+      'https://ci.me/api/app/channels/following',
+      'https://ci.me/api/app/users/me/followings'
+    ];
 
-    // 若关注列表为空，自动拉取热门/推荐主播作为备选
-    if (!channels || channels.length === 0) {
+    for (const url of endpoints) {
       try {
-        const recRes = await fetch('https://ci.me/api/app/channels/recommended', {
-          headers: { 'Accept': 'application/json' }
+        const res = await fetch(url, {
+          headers: {
+            'Accept': 'application/json',
+            'Origin': 'https://ci.me',
+            'Referer': 'https://ci.me/'
+          },
+          credentials: 'include'
         });
-        if (recRes.ok) {
-          const recJson = await recRes.json();
-          const recItems = recJson?.data?.recent || [];
-          channels = recItems.map((r) => ({
-            ...(r.channel || {}),
-            live: r.live
-          }));
+        if (res.ok) {
+          const json = await res.json();
+          const items = Array.isArray(json)
+            ? json
+            : (json.data?.channels || json.data?.items || json.data?.list || (Array.isArray(json.data) ? json.data : []));
+          if (items && items.length > 0) {
+            channels = items;
+            break;
+          }
         }
-      } catch (e) {}
+      } catch (e) {
+        // 继续尝试备用接口
+      }
+    }
+
+    // 若未登录或无关注主播，严格返回空数组，绝不获取热门/推荐主播
+    if (!channels || channels.length === 0) {
+      return [];
     }
 
     return channels.map((ch) => {
-      const isLive = Boolean(ch.isLive || ch.live);
+      const channelObj = ch.channel || ch;
+      const liveObj = ch.live || channelObj.live;
+      const isLive = Boolean(ch.isLive || channelObj.isLive || liveObj?.isLive || liveObj);
+      const slug = channelObj.slug || channelObj.id || ch.slug || ch.id || '';
+      const avatar = channelObj.imageUrl || ch.imageUrl || channelObj.avatarUrl || '';
+      const liveThumb = liveObj?.thumbnailUrl || liveObj?.coverUrl || avatar;
       return {
         platform: 'cime',
-        channelId: ch.slug || ch.id,
-        streamer: ch.name || ch.slug,
+        channelId: slug,
+        streamer: channelObj.name || channelObj.slug || ch.name || slug,
         isLive: isLive,
-        title: ch.live?.title || ch.description || '',
-        viewers: ch.live?.curViewerCnt || 0,
-        thumbnail: ch.imageUrl || '',
+        title: liveObj?.title || channelObj.description || '',
+        viewers: liveObj?.curViewerCnt || liveObj?.viewers || 0,
+        thumbnail: liveThumb,
+        avatar: avatar,
         updatedAt: Date.now()
       };
     });

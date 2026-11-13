@@ -80,7 +80,17 @@ export class DanmakuEngine {
 
       btn.addEventListener('contextmenu', (e) => {
         e.preventDefault();
+        e.stopPropagation();
         this.showSettingsMenu();
+      });
+    }
+
+    // 绑定弹幕图层与视频区域右键呼出弹幕样式设置
+    if (this.containerEl) {
+      this.containerEl.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showSettingsMenu(e.clientX, e.clientY);
       });
     }
 
@@ -163,12 +173,24 @@ export class DanmakuEngine {
     });
   }
 
-  showSettingsMenu() {
-    if (!this.menuEl || !this.btnEl) return;
-    const rect = this.btnEl.getBoundingClientRect();
-    this.menuEl.style.bottom = `${window.innerHeight - rect.top + 8}px`;
-    this.menuEl.style.left = `${Math.max(10, rect.left - 80)}px`;
-    this.menuEl.classList.toggle('active');
+  showSettingsMenu(x = null, y = null) {
+    if (!this.menuEl) return;
+    if (x !== null && y !== null) {
+      const menuWidth = 250;
+      const menuHeight = 280;
+      const left = Math.min(window.innerWidth - menuWidth - 10, Math.max(10, x));
+      const top = Math.min(window.innerHeight - menuHeight - 10, Math.max(10, y - menuHeight));
+      this.menuEl.style.left = `${left}px`;
+      this.menuEl.style.top = `${top}px`;
+      this.menuEl.style.bottom = 'auto';
+      this.menuEl.classList.add('active');
+    } else if (this.btnEl) {
+      const rect = this.btnEl.getBoundingClientRect();
+      this.menuEl.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+      this.menuEl.style.top = 'auto';
+      this.menuEl.style.left = `${Math.max(10, rect.left - 80)}px`;
+      this.menuEl.classList.toggle('active');
+    }
   }
 
   toggle() {
@@ -939,6 +961,13 @@ export class DanmakuEngine {
     danmakuEl.style.animationDuration = `${this.speed}s`;
 
     danmakuEl.innerHTML = renderedHtml;
+
+    // 支持在飞行弹幕上右键直接呼出样式调节面板
+    danmakuEl.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.showSettingsMenu(e.clientX, e.clientY);
+    });
 
     this.containerEl.appendChild(danmakuEl);
 

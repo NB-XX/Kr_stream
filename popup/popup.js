@@ -49,6 +49,7 @@ function initResolver() {
   const btnPlayDual = document.getElementById('btn-play-dual');
   const btnCopyM3u8 = document.getElementById('btn-copy-m3u8');
   const btnFavAdd = document.getElementById('btn-fav-add');
+  const selectPopupCdn = document.getElementById('select-popup-cdn');
 
   btnResolve.addEventListener('click', () => handleResolve());
   input.addEventListener('keydown', (e) => {
@@ -83,6 +84,19 @@ function initResolver() {
           btnPlaySingle.disabled = !data.isLive;
           btnPlayDual.disabled = !data.isLive;
           btnCopyM3u8.disabled = !data.isLive;
+
+          if (selectPopupCdn) {
+            const cdns = data.availableCdns || [
+              { key: 'default', name: '默认加速节点' }
+            ];
+            selectPopupCdn.innerHTML = '';
+            cdns.forEach((c) => {
+              const opt = document.createElement('option');
+              opt.value = c.key;
+              opt.textContent = c.name;
+              selectPopupCdn.appendChild(opt);
+            });
+          }
         } else {
           alert('解析失败: ' + (res?.error || '无法识别或网络错误'));
           resultCard.style.display = 'none';
@@ -126,12 +140,28 @@ function initResolver() {
     }
   });
 
-  // 复制 M3U8
+  // 复制 M3U8 直链 (根据选中的 CDN 节点生成)
   btnCopyM3u8.addEventListener('click', async () => {
     if (currentResolvedData?.streamUrl) {
-      await navigator.clipboard.writeText(currentResolvedData.streamUrl);
-      btnCopyM3u8.textContent = '已复制!';
-      setTimeout(() => (btnCopyM3u8.textContent = '复制直链'), 2000);
+      const chosenCdn = selectPopupCdn?.value || 'default';
+      btnCopyM3u8.textContent = '...';
+      try {
+        const res = await chrome.runtime.sendMessage({
+          action: 'RESOLVE_STREAM',
+          payload: {
+            input: `${currentResolvedData.platform === 'cime' ? 'https://ci.me/@' : currentResolvedData.platform === 'chzzk' ? 'https://chzzk.naver.com/live/' : 'https://play.sooplive.com/'}${currentResolvedData.channelId}`,
+            options: { cdnPreference: chosenCdn }
+          }
+        });
+        const urlToCopy = res?.data?.streamUrl || currentResolvedData.streamUrl;
+        await navigator.clipboard.writeText(urlToCopy);
+        btnCopyM3u8.textContent = '已复制!';
+        setTimeout(() => (btnCopyM3u8.textContent = '复制直链'), 2000);
+      } catch (err) {
+        await navigator.clipboard.writeText(currentResolvedData.streamUrl);
+        btnCopyM3u8.textContent = '已复制!';
+        setTimeout(() => (btnCopyM3u8.textContent = '复制直链'), 2000);
+      }
     }
   });
 

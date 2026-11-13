@@ -120,6 +120,32 @@ async function runTests() {
   assert(lowLatencyHlsConfig.maxBufferLength < normalHlsConfig.maxBufferLength, 'Low latency max buffer must be smaller than normal mode');
   console.log('  Pass: Low latency vs Normal mode buffer parameters verified.');
 
+  console.log('[Test 5] Latency formatting & Pinning priority sorting');
+  function formatLatency(sec) {
+    if (sec < 60) return `${sec.toFixed(1)}s`;
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}分${s < 10 ? '0' : ''}${s}秒`;
+  }
+  assert.strictEqual(formatLatency(1.8), '1.8s');
+  assert.strictEqual(formatLatency(75), '1分15秒');
+  assert.strictEqual(formatLatency(600), '10分00秒');
+
+  const pinnedSet = new Set(['soop:gosegu2']);
+  const list = [
+    { platform: 'soop', channelId: 'other', isLive: true, viewers: 1000 },
+    { platform: 'soop', channelId: 'gosegu2', isLive: true, viewers: 500 }
+  ];
+  list.sort((a, b) => {
+    const pinA = pinnedSet.has(`${a.platform}:${a.channelId}`) ? 1 : 0;
+    const pinB = pinnedSet.has(`${b.platform}:${b.channelId}`) ? 1 : 0;
+    if (pinA !== pinB) return pinB - pinA;
+    if (a.isLive !== b.isLive) return a.isLive ? -1 : 1;
+    return (b.viewers || 0) - (a.viewers || 0);
+  });
+  assert.strictEqual(list[0].channelId, 'gosegu2', 'Pinned streamer must be sorted to the very top');
+  console.log('  Pass: Latency formatting and Pinning priority verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

@@ -93,9 +93,68 @@ class StreamSlot {
       <!-- 视频播放容器 -->
       <div class="video-container">
         <video id="video-${this.slotId}" playsinline autoplay></video>
-        <div class="loading-mask active" id="loading-${this.slotId}">
+        <!-- 连线加载中遮罩 (仅在发起连接时激活转圈) -->
+        <div class="loading-mask" id="loading-${this.slotId}">
           <div class="spinner"></div>
-          <div class="loading-msg" id="loading-msg-${this.slotId}">点击左侧主播卡片开始播放</div>
+          <div class="loading-msg" id="loading-msg-${this.slotId}">正在连接直播源...</div>
+        </div>
+
+        <!-- 初始空闲引导卡 (漫画式三步使用指引，无转圈，体验舒适) -->
+        <div class="slot-guide-comic ${this.currentStreamData ? 'hidden' : ''}" id="guide-comic-${this.slotId}">
+          <div class="comic-header">
+            <span class="comic-tag">KRSTREAM QUICK START</span>
+            <span class="comic-title">多屏工作台快速指南</span>
+          </div>
+          <div class="comic-panels">
+            <!-- 漫画第 1 格 -->
+            <div class="comic-panel">
+              <div class="panel-step">01. 选台</div>
+              <div class="panel-art">
+                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="44" height="32" rx="2" stroke="#3f3f46"/>
+                  <line x1="14" y1="2" x2="14" y2="34" stroke="#3f3f46" stroke-dasharray="2 2"/>
+                  <rect x="4" y="6" width="7" height="4" fill="#00aeec"/>
+                  <rect x="4" y="13" width="7" height="4" fill="#3f3f46"/>
+                  <rect x="4" y="20" width="7" height="4" fill="#3f3f46"/>
+                  <path d="M22 18l12-7v14z" fill="#00aeec"/>
+                </svg>
+              </div>
+              <div class="panel-caption">点击左侧关注主播<br>或输入直播链接直连</div>
+            </div>
+            <!-- 漫画第 2 格 -->
+            <div class="comic-panel">
+              <div class="panel-step">02. 布局</div>
+              <div class="panel-art">
+                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="20" height="14" rx="2" stroke="#00aeec"/>
+                  <rect x="26" y="2" width="20" height="14" rx="2" stroke="#3f3f46"/>
+                  <rect x="2" y="20" width="20" height="14" rx="2" stroke="#3f3f46"/>
+                  <rect x="26" y="20" width="20" height="14" rx="2" stroke="#3f3f46"/>
+                  <path d="M12 9h4M14 7v4" stroke="#00aeec"/>
+                </svg>
+              </div>
+              <div class="panel-caption">自由增加多窗口同播<br>支持保存为布局模板</div>
+            </div>
+            <!-- 漫画第 3 格 -->
+            <div class="comic-panel">
+              <div class="panel-step">03. 互动</div>
+              <div class="panel-art">
+                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="44" height="32" rx="2" stroke="#3f3f46"/>
+                  <path d="M6 10h18M6 16h12" stroke="#a1a1aa"/>
+                  <rect x="6" y="22" width="26" height="7" rx="1" fill="rgba(0,174,236,0.15)" stroke="#00aeec"/>
+                  <polygon points="38 7 32 17 38 17 36 27 44 14 38 14" fill="#10b981"/>
+                </svg>
+              </div>
+              <div class="panel-caption">右键字幕双语翻译<br>右键弹幕调样式与追帧</div>
+            </div>
+          </div>
+          <div class="comic-action">
+            <button class="btn-comic-pick" id="btn-comic-pick-${this.slotId}">
+              <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8h12M8 2l6 6-6 6"/></svg>
+              <span>从左侧选择开播主播</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -204,6 +263,13 @@ class StreamSlot {
     this.recordTxt = slotEl.querySelector(`#record-txt-${this.slotId}`);
     this.videoContainer = slotEl.querySelector('.video-container');
     this.btnPip = slotEl.querySelector(`#btn-pip-${this.slotId}`);
+    this.guideComic = slotEl.querySelector(`#guide-comic-${this.slotId}`);
+    const btnComicPick = slotEl.querySelector(`#btn-comic-pick-${this.slotId}`);
+    if (btnComicPick) {
+      btnComicPick.addEventListener('click', () => {
+        document.getElementById('sidebar')?.classList.remove('collapsed');
+      });
+    }
   }
 
   bindEvents() {
@@ -212,17 +278,35 @@ class StreamSlot {
       this.manager.removeSlot(this.slotId);
     });
 
-    // 播放 / 暂停
+    // 播放 / 暂停 (支持本地缓存最大10分钟，暂停时不丢弃画面，复播平滑无缝且更新延迟时间)
     const btnPlayPause = this.dom.querySelector(`#btn-playpause-${this.slotId}`);
     btnPlayPause.addEventListener('click', () => {
       if (this.video.paused) {
         this.video.play();
         btnPlayPause.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
+        this.isUserPaused = false;
       } else {
         this.video.pause();
         btnPlayPause.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
+        this.isUserPaused = true;
+        if (this.hls) {
+          this.hls.config.maxBufferLength = 600;
+        }
       }
     });
+
+    // 专属加速 CDN 切换与右键复制直链
+    if (this.selectCdn) {
+      this.selectCdn.setAttribute('title', '为此窗口切换专属加速 CDN (右键复制当前所选 CDN 直链)');
+      this.selectCdn.addEventListener('contextmenu', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (this.currentStreamData?.streamUrl) {
+          await navigator.clipboard.writeText(this.currentStreamData.streamUrl);
+          this.showToast(`已复制当前 CDN 直链 (${this.selectCdn.options[this.selectCdn.selectedIndex]?.text || ''})`);
+        }
+      });
+    }
 
     // 刷新
     this.dom.querySelector(`#btn-reload-${this.slotId}`).addEventListener('click', () => {
@@ -513,12 +597,15 @@ class StreamSlot {
   }
 
   showLoading(text = '正在加载直播流...') {
+    if (this.guideComic) this.guideComic.classList.add('hidden');
     this.loadingMsg.textContent = text;
     this.loading.classList.add('active');
   }
 
   hideLoading() {
     this.loading.classList.remove('active');
+    if (this.guideComic) this.guideComic.classList.add('hidden');
+  }
   }
 
   async loadStream(streamData) {
@@ -729,7 +816,7 @@ class StreamSlot {
 
     this.syncTimer = setInterval(() => {
       if (this.isCatchReplayMode) return;
-      if (!this.video || this.video.paused) return;
+      if (!this.video) return;
 
       // 1. 计算已播时长
       if (this.streamStartTime > 0) {
@@ -740,39 +827,47 @@ class StreamSlot {
         this.txtDuration.textContent = `播放 ${this.formatTime(cur)}`;
       }
 
-      // 2. 计算当前延迟落后秒数
+      // 2. 计算当前延迟落后秒数 (即使暂停，也持续计算并更新延迟标签)
       const livePos = this.hls?.liveSyncPosition || this.video.duration || 0;
       const latency = Math.max(0, livePos - this.video.currentTime);
-      const latencyFixed = latency.toFixed(1);
+      const latencyDisplay = this.formatLatency(latency);
 
       if (latency < 2.5) {
         this.tagLatency.className = 'latency-tag good';
-        this.tagLatency.textContent = `延迟 ${latencyFixed}s`;
+        this.tagLatency.textContent = `延迟 ${latencyDisplay}`;
       } else if (latency < 6.0) {
         this.tagLatency.className = 'latency-tag medium';
-        this.tagLatency.textContent = `延迟 ${latencyFixed}s`;
+        this.tagLatency.textContent = `延迟 ${latencyDisplay}`;
       } else {
         this.tagLatency.className = 'latency-tag bad';
-        this.tagLatency.textContent = `延迟 ${latencyFixed}s`;
+        this.tagLatency.textContent = `延迟 ${latencyDisplay}`;
       }
 
-      // 3. 若处于【缩短时差】模式，执行动态追帧与低延迟维持
-      if (this.isLowLatencyMode && this.hls && !this.isCatchReplayMode && !this.video.paused) {
-        if (latency > 15.0) {
-          // 严重落后（如切出标签页后切回），直接跳跃对齐
+      // 3. 动态追帧与延迟管理 (仅在正常播放且非用户暂停时执行)
+      if (this.isLowLatencyMode && this.hls && !this.isCatchReplayMode && !this.video.paused && !this.isUserPaused) {
+        // 超过本地 10 分钟 (600秒) 最大缓冲限制时，才被迫跃进至实时边缘
+        if (latency > 600.0) {
           this.video.currentTime = Math.max(0, livePos - 1.5);
           this.video.playbackRate = 1.0;
-        } else if (latency > 2.8) {
-          // 略有落后，启动 1.10x 微加速追赶
+        } else if (latency > 2.8 && latency <= 15.0) {
+          // 仅在 15 秒以内的轻微网络时差下微加速追平；大于 15 秒说明曾被暂停，保持原速播放保护本地已缓存的内容
           this.video.playbackRate = 1.10;
         } else if (latency <= 1.8 && this.video.playbackRate !== 1.0) {
-          // 已对齐边缘，恢复原速
           this.video.playbackRate = 1.0;
         }
-      } else if (!this.isLowLatencyMode && this.video && this.video.playbackRate !== 1.0) {
+      } else if (this.video && this.video.playbackRate !== 1.0) {
         this.video.playbackRate = 1.0;
       }
     }, 1000);
+  }
+
+  formatLatency(sec) {
+    if (sec < 60) {
+      return `${sec.toFixed(1)}s`;
+    }
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m}分${s < 10 ? '0' : ''}${s}秒`;
   }
 
   // 缩短时差 (极速低延迟模式) 切换与状态维护
@@ -1481,6 +1576,135 @@ class SlotManager {
     this.slotOrder = []; // 窗口自定义排列顺序 [slotId1, slotId2, ...]
     this.currentLayout = '1';
     this.gridContainer = document.getElementById('viewport-grid');
+    this.initTemplates();
+  }
+
+  initTemplates() {
+    this.templateSelect = document.getElementById('template-select');
+    this.btnSaveTemplate = document.getElementById('btn-save-template');
+    this.btnDeleteTemplate = document.getElementById('btn-delete-template');
+
+    this.renderTemplateOptions();
+
+    if (this.templateSelect) {
+      this.templateSelect.addEventListener('change', (e) => {
+        const val = e.target.value;
+        if (val === 'current') {
+          if (this.btnDeleteTemplate) this.btnDeleteTemplate.style.display = 'none';
+        } else {
+          this.applyTemplate(val);
+        }
+      });
+    }
+
+    if (this.btnSaveTemplate) {
+      this.btnSaveTemplate.addEventListener('click', () => {
+        this.saveCurrentAsTemplate();
+      });
+    }
+
+    if (this.btnDeleteTemplate) {
+      this.btnDeleteTemplate.addEventListener('click', () => {
+        const val = this.templateSelect.value;
+        if (val && val !== 'current') {
+          this.deleteTemplate(val);
+        }
+      });
+    }
+  }
+
+  getTemplates() {
+    try {
+      return JSON.parse(localStorage.getItem('krstream_layout_templates') || '[]');
+    } catch {
+      return [];
+    }
+  }
+
+  saveTemplates(templates) {
+    localStorage.setItem('krstream_layout_templates', JSON.stringify(templates));
+    this.renderTemplateOptions();
+  }
+
+  renderTemplateOptions(selectedId = 'current') {
+    if (!this.templateSelect) return;
+    const templates = this.getTemplates();
+    this.templateSelect.innerHTML = `<option value="current">当前工作区 (${this.slots.size}P)</option>`;
+    templates.forEach((t) => {
+      const opt = document.createElement('option');
+      opt.value = t.id;
+      opt.textContent = `${t.name} (${t.slots?.length || 0}P)`;
+      if (t.id === selectedId) opt.selected = true;
+      this.templateSelect.appendChild(opt);
+    });
+    if (this.btnDeleteTemplate) {
+      this.btnDeleteTemplate.style.display = selectedId !== 'current' ? 'inline-flex' : 'none';
+    }
+  }
+
+  saveCurrentAsTemplate() {
+    const slotsData = [];
+    for (const id of this.slotOrder) {
+      const slot = this.slots.get(id);
+      if (slot && slot.currentStreamData) {
+        slotsData.push({
+          ...slot.currentStreamData,
+          selectedCdn: slot.selectedCdn || 'default',
+          lowLatencyMode: slot.isLowLatencyMode !== false
+        });
+      }
+    }
+
+    if (slotsData.length === 0) {
+      alert('当前没有正在播放的主播窗口，请先打开至少一个直播频道再保存为模板。');
+      return;
+    }
+
+    const defaultName = `模板: ` + slotsData.map((s) => s.streamer || s.channelId).slice(0, 3).join('+');
+    const name = prompt('请输入新模板名称:', defaultName);
+    if (!name || !name.trim()) return;
+
+    const templates = this.getTemplates();
+    const newTemplate = {
+      id: `tpl_${Date.now()}`,
+      name: name.trim(),
+      createdAt: Date.now(),
+      slots: slotsData
+    };
+    templates.push(newTemplate);
+    this.saveTemplates(templates);
+    this.renderTemplateOptions(newTemplate.id);
+  }
+
+  applyTemplate(templateId) {
+    const templates = this.getTemplates();
+    const target = templates.find((t) => t.id === templateId);
+    if (!target || !target.slots || target.slots.length === 0) return;
+
+    // 清空现有窗口
+    for (const [id, slot] of this.slots.entries()) {
+      slot.destroy();
+    }
+    this.slots.clear();
+    this.slotOrder = [];
+
+    // 重建模板窗口
+    for (const slotData of target.slots) {
+      this.createSlot(slotData);
+    }
+
+    if (this.btnDeleteTemplate) {
+      this.btnDeleteTemplate.style.display = 'inline-flex';
+    }
+  }
+
+  deleteTemplate(templateId) {
+    const templates = this.getTemplates().filter((t) => t.id !== templateId);
+    this.saveTemplates(templates);
+    this.renderTemplateOptions('current');
+    if (this.btnDeleteTemplate) {
+      this.btnDeleteTemplate.style.display = 'none';
+    }
   }
 
   createSlot(initialData = null) {
@@ -1498,6 +1722,7 @@ class SlotManager {
     this.slotOrder.push(id);
     this.updateSlotOrderStyles();
     this.adjustLayout();
+    this.renderTemplateOptions(this.templateSelect?.value || 'current');
     this.saveState();
     return slot;
   }
@@ -1510,6 +1735,7 @@ class SlotManager {
       this.slotOrder = this.slotOrder.filter((id) => id !== slotId);
       this.updateSlotOrderStyles();
       this.adjustLayout();
+      this.renderTemplateOptions(this.templateSelect?.value || 'current');
       this.saveState();
     }
   }
@@ -2172,6 +2398,7 @@ class AppHub {
     this.followings = [];
     this.currentFilter = 'all';
     this.pollTimer = null;
+    this.pinnedStreamers = new Set(JSON.parse(localStorage.getItem('krstream_pinned_streamers') || '[]'));
 
     this.sidebar = document.getElementById('sidebar');
     this.btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
@@ -2184,7 +2411,116 @@ class AppHub {
     this.btnAddWindow = document.getElementById('btn-add-window');
     this.btnClearAll = document.getElementById('btn-clear-all');
 
+    this.initCardContextMenu();
     this.init();
+  }
+
+  initCardContextMenu() {
+    let menu = document.getElementById('card-context-menu');
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.id = 'card-context-menu';
+      menu.className = 'card-context-menu';
+      document.body.appendChild(menu);
+    }
+    this.contextMenu = menu;
+
+    document.addEventListener('click', (e) => {
+      if (this.contextMenu && !this.contextMenu.contains(e.target)) {
+        this.contextMenu.classList.remove('active');
+      }
+    });
+  }
+
+  isPinned(item) {
+    return this.pinnedStreamers.has(`${item.platform}:${item.channelId}`);
+  }
+
+  togglePin(item) {
+    const key = `${item.platform}:${item.channelId}`;
+    if (this.pinnedStreamers.has(key)) {
+      this.pinnedStreamers.delete(key);
+    } else {
+      this.pinnedStreamers.add(key);
+    }
+    localStorage.setItem('krstream_pinned_streamers', JSON.stringify([...this.pinnedStreamers]));
+    this.renderStreamerList();
+  }
+
+  showCardMenu(e, item, isDirectLinkOnly = false) {
+    if (!this.contextMenu) return;
+    const isPinned = this.isPinned(item);
+    const cdns = PLATFORM_CDNS[item.platform] || [];
+
+    let cdnHtml = '';
+    if (cdns.length > 0) {
+      cdnHtml = `
+        <div class="menu-group-header">复制 M3U8 直链 (选择 CDN)</div>
+        ${cdns.map((c) => `
+          <button class="menu-item-btn" data-action="copy-cdn" data-cdn="${c.key}">
+            <span>${c.name}</span>
+            <span class="item-tag">${c.host ? '专属' : '默认'}</span>
+          </button>
+        `).join('')}
+      `;
+    }
+
+    let generalHtml = '';
+    if (!isDirectLinkOnly) {
+      generalHtml = `
+        <button class="menu-item-btn" data-action="toggle-pin">
+          <span>${isPinned ? '📌 取消置顶此直播间' : '📌 置顶此直播间 (全部分类通用)'}</span>
+        </button>
+        <button class="menu-item-btn" data-action="play-new">
+          <span>▶ 在新独立窗口播放</span>
+        </button>
+        <div class="menu-divider"></div>
+      `;
+    }
+
+    this.contextMenu.innerHTML = `${generalHtml}${cdnHtml}`;
+
+    const menuWidth = 200;
+    const menuHeight = isDirectLinkOnly ? (cdns.length * 28 + 30) : (cdns.length * 28 + 100);
+    const x = Math.min(window.innerWidth - menuWidth - 10, Math.max(10, e.clientX));
+    const y = Math.min(window.innerHeight - menuHeight - 10, Math.max(10, e.clientY));
+    this.contextMenu.style.left = `${x}px`;
+    this.contextMenu.style.top = `${y}px`;
+    this.contextMenu.classList.add('active');
+
+    this.contextMenu.querySelectorAll('.menu-item-btn').forEach((btn) => {
+      btn.addEventListener('click', async (ev) => {
+        ev.stopPropagation();
+        this.contextMenu.classList.remove('active');
+        const action = btn.dataset.action;
+        if (action === 'toggle-pin') {
+          this.togglePin(item);
+        } else if (action === 'play-new') {
+          const slot = this.slotManager.createSlot();
+          slot.loadStream(item);
+        } else if (action === 'copy-cdn') {
+          const cdnKey = btn.dataset.cdn;
+          const cdnObj = cdns.find((c) => c.key === cdnKey);
+          try {
+            const res = await chrome.runtime.sendMessage({
+              action: 'RESOLVE_STREAM',
+              payload: {
+                input: `${item.platform === 'cime' ? 'https://ci.me/@' : item.platform === 'chzzk' ? 'https://chzzk.naver.com/live/' : 'https://play.sooplive.com/'}${item.channelId}`,
+                options: { cdnPreference: cdnKey }
+              }
+            });
+            if (res?.data?.streamUrl) {
+              await navigator.clipboard.writeText(res.data.streamUrl);
+              alert(`已复制 [${cdnObj?.name || cdnKey}] 直链到剪贴板！`);
+            } else {
+              alert('获取直链失败: ' + (res?.error || '主播可能未开播'));
+            }
+          } catch (err) {
+            alert('解析异常: ' + err.message);
+          }
+        }
+      });
+    });
   }
 
   init() {
@@ -2368,8 +2704,15 @@ class AppHub {
   updateCounts() {
     const countAll = document.getElementById('count-all');
     const countLive = document.getElementById('count-live');
+    const countSoop = document.getElementById('count-soop');
+    const countChzzk = document.getElementById('count-chzzk');
+    const countCime = document.getElementById('count-cime');
+
     if (countAll) countAll.textContent = this.followings.length;
     if (countLive) countLive.textContent = this.followings.filter((f) => f.isLive).length;
+    if (countSoop) countSoop.textContent = this.followings.filter((f) => f.platform === 'soop' && f.isLive).length;
+    if (countChzzk) countChzzk.textContent = this.followings.filter((f) => f.platform === 'chzzk' && f.isLive).length;
+    if (countCime) countCime.textContent = this.followings.filter((f) => f.platform === 'cime' && f.isLive).length;
   }
 
   renderStreamerList() {
@@ -2382,6 +2725,9 @@ class AppHub {
     }
 
     filtered.sort((a, b) => {
+      const pinA = this.isPinned(a) ? 1 : 0;
+      const pinB = this.isPinned(b) ? 1 : 0;
+      if (pinA !== pinB) return pinB - pinA;
       if (a.isLive !== b.isLive) return a.isLive ? -1 : 1;
       return (b.viewers || 0) - (a.viewers || 0);
     });
@@ -2406,6 +2752,7 @@ class AppHub {
         <div class="streamer-info">
           <div class="info-row-top">
             <span class="platform-pill ${item.platform}">${item.platform.toUpperCase()}</span>
+            ${this.isPinned(item) ? '<span class="pinned-tag" title="已置顶主播">置顶</span>' : ''}
             <span class="streamer-title-name">${item.streamer || item.channelId}</span>
             ${item.isLive ? `<span class="viewers-badge">${item.viewers ? item.viewers + ' 人' : '直播'}</span>` : ''}
           </div>
@@ -2414,9 +2761,16 @@ class AppHub {
 
         <div class="card-hover-actions">
           <button class="card-btn btn-play-new" title="加入或新建窗口播放">播放</button>
-          <button class="card-btn btn-copy" title="复制 M3U8 直链">直链</button>
+          <button class="card-btn btn-copy" title="复制 M3U8 直链 (点击选择 CDN)">直链</button>
         </div>
       `;
+
+      // 右键卡片呼出置顶与快捷操作菜单
+      card.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showCardMenu(e, item, false);
+      });
 
       // 点击主体或【+ 播放】：优先放入空闲窗口，若无空闲窗口则新建窗口
       card.addEventListener('click', (e) => {
@@ -2428,30 +2782,15 @@ class AppHub {
         slot.loadStream(item);
       });
 
-      // 复制直链
-      card.querySelector('.btn-copy').addEventListener('click', async (e) => {
+      // 复制直链 (点击或右键均呼出 CDN 节点选择菜单)
+      card.querySelector('.btn-copy').addEventListener('click', (e) => {
         e.stopPropagation();
-        const copyBtn = card.querySelector('.btn-copy');
-        copyBtn.textContent = '...';
-        try {
-          const res = await chrome.runtime.sendMessage({
-            action: 'RESOLVE_STREAM',
-            payload: {
-              input: `${item.platform === 'cime' ? 'https://ci.me/@' : item.platform === 'chzzk' ? 'https://chzzk.naver.com/live/' : 'https://play.sooplive.com/'}${item.channelId}`
-            }
-          });
-          if (res?.data?.streamUrl) {
-            await navigator.clipboard.writeText(res.data.streamUrl);
-            copyBtn.textContent = '已复制';
-            setTimeout(() => (copyBtn.textContent = '直链'), 1500);
-          } else {
-            alert('获取直链失败: ' + (res?.error || '主播可能未开播'));
-            copyBtn.textContent = '直链';
-          }
-        } catch (err) {
-          alert('解析异常: ' + err.message);
-          copyBtn.textContent = '直链';
-        }
+        this.showCardMenu(e, item, true);
+      });
+      card.querySelector('.btn-copy').addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showCardMenu(e, item, true);
       });
 
       this.streamerListContainer.appendChild(card);
