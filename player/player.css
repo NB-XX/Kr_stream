@@ -1042,8 +1042,8 @@ video {
   background: rgba(239, 68, 68, 0.08);
 }
 
-/* 追帧与时光机按钮 */
-.btn-ctrl-catchup, .btn-ctrl-replay, .btn-ctrl-sub-history {
+/* 缩短时差、追帧与时光机按钮 */
+.btn-ctrl-latency, .btn-ctrl-catchup, .btn-ctrl-replay, .btn-ctrl-sub-history {
   border: 1px solid var(--border-default);
   background: var(--bg-surface-2);
   gap: 3px;
@@ -1051,13 +1051,13 @@ video {
   font-size: 10px;
 }
 
-.btn-ctrl-catchup:hover, .btn-ctrl-replay:hover, .btn-ctrl-sub-history:hover {
+.btn-ctrl-latency:hover, .btn-ctrl-catchup:hover, .btn-ctrl-replay:hover, .btn-ctrl-sub-history:hover {
   border-color: var(--border-hover);
   background: var(--bg-surface-hover);
   color: var(--fg-primary);
 }
 
-.btn-ctrl-catchup.active, .btn-ctrl-replay.active {
+.btn-ctrl-latency.active, .btn-ctrl-catchup.active, .btn-ctrl-replay.active {
   background: var(--accent-primary);
   color: var(--fg-inverse);
   border-color: var(--accent-primary);

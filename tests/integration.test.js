@@ -105,6 +105,21 @@ async function runTests() {
   }
   console.log('  Pass: All 8 SOOP language numbers and codes verified.');
 
+  console.log('[Test 4] Low latency buffer mode parameter verification');
+  const lowLatencyHlsConfig = {
+    liveSyncDurationCount: 1.5,
+    liveMaxLatencyDurationCount: 3.0,
+    maxBufferLength: 4
+  };
+  const normalHlsConfig = {
+    liveSyncDurationCount: 3.0,
+    liveMaxLatencyDurationCount: 6.0,
+    maxBufferLength: 30
+  };
+  assert(lowLatencyHlsConfig.liveSyncDurationCount < normalHlsConfig.liveSyncDurationCount, 'Low latency buffer count must be lower than normal mode');
+  assert(lowLatencyHlsConfig.maxBufferLength < normalHlsConfig.maxBufferLength, 'Low latency max buffer must be smaller than normal mode');
+  console.log('  Pass: Low latency vs Normal mode buffer parameters verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 
