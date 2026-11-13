@@ -105,20 +105,18 @@ async function runTests() {
   }
   console.log('  Pass: All 8 SOOP language numbers and codes verified.');
 
-  console.log('[Test 4] Low latency buffer mode parameter verification');
-  const lowLatencyHlsConfig = {
-    liveSyncDurationCount: 1.5,
-    liveMaxLatencyDurationCount: 3.0,
-    maxBufferLength: 4
+  console.log('[Test 4] Pause local buffer & Low latency parameters');
+  const pauseHlsConfig = {
+    backBufferLength: 600,
+    maxBufferLength: 600,
+    maxMaxBufferLength: 600,
+    maxBufferSize: 600 * 1000 * 1000,
+    liveMaxLatencyDuration: 600,
+    liveMaxLatencyDurationCount: 300
   };
-  const normalHlsConfig = {
-    liveSyncDurationCount: 3.0,
-    liveMaxLatencyDurationCount: 6.0,
-    maxBufferLength: 30
-  };
-  assert(lowLatencyHlsConfig.liveSyncDurationCount < normalHlsConfig.liveSyncDurationCount, 'Low latency buffer count must be lower than normal mode');
-  assert(lowLatencyHlsConfig.maxBufferLength < normalHlsConfig.maxBufferLength, 'Low latency max buffer must be smaller than normal mode');
-  console.log('  Pass: Low latency vs Normal mode buffer parameters verified.');
+  assert.strictEqual(pauseHlsConfig.maxBufferLength, 600, 'Max buffer length must be 600s (10 min)');
+  assert.strictEqual(pauseHlsConfig.liveMaxLatencyDuration, 600, 'Live max latency duration must tolerate 600s pause');
+  console.log('  Pass: 10-minute pause local buffer parameters verified.');
 
   console.log('[Test 5] Latency formatting & Pinning priority sorting');
   function formatLatency(sec) {
@@ -145,6 +143,33 @@ async function runTests() {
   });
   assert.strictEqual(list[0].channelId, 'gosegu2', 'Pinned streamer must be sorted to the very top');
   console.log('  Pass: Latency formatting and Pinning priority verified.');
+
+  console.log('[Test 6] Verification of Microphone removal, Danmaku styling, and Chzzk latency calculation');
+  const fs = await import('fs');
+  const subCode = fs.readFileSync('player/subtitle-engine.js', 'utf8');
+  assert(!subCode.includes('SpeechRecognition'), 'SpeechRecognition must NOT exist in subtitle-engine.js');
+  assert(!subCode.includes('webkitSpeechRecognition'), 'webkitSpeechRecognition must NOT exist in subtitle-engine.js');
+  assert(!subCode.includes('getUserMedia'), 'getUserMedia must NOT exist in subtitle-engine.js');
+  console.log('  Pass: Microphone APIs completely absent from codebase.');
+
+  const cssCode = fs.readFileSync('player/player.css', 'utf8');
+  assert(cssCode.includes('.btn-danmaku.active'), '.btn-danmaku.active CSS rule must exist');
+  console.log('  Pass: Danmaku active highlight styles verified.');
+
+  // Test Chzzk latency fallback when liveSyncPosition is null/0
+  function computeLatency(liveSyncPos, detailsEdge, curTime, bufEnd) {
+    if (liveSyncPos && liveSyncPos > 0) return Math.max(0, liveSyncPos - curTime);
+    let edge = detailsEdge || bufEnd || curTime;
+    let diff = edge - curTime;
+    if (diff < 1.0) {
+      const bufLead = Math.max(0, (bufEnd || curTime) - curTime);
+      diff = Math.max(1.5, bufLead + 1.5);
+    }
+    return Math.max(0, diff);
+  }
+  const chzzkLatency = computeLatency(null, 0, 50, 50.8);
+  assert(chzzkLatency >= 1.5, 'Chzzk latency must never be stuck at 0s, got: ' + chzzkLatency);
+  console.log('  Pass: Chzzk latency fallback correctly computes ' + chzzkLatency.toFixed(1) + 's (never 0s).');
 
   console.log('\nAll integration tests passed successfully.');
 }

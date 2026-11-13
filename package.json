@@ -4,7 +4,7 @@
   "description": "Multi-stream live player extension for SOOP, Chzzk, and CI.ME",
   "type": "module",
   "scripts": {
-    "test": "node -c player/player.js && node -c background.js && node -c popup/popup.js && node tests/integration.test.js && node tests/subtitle.test.js"
+    "test": "node -c player/player.js && node -c player/subtitle-engine.js && node -c player/danmaku-engine.js && node -c background.js && node -c popup/popup.js && node tests/integration.test.js && node tests/subtitle.test.js"
   },
   "keywords": [
     "soop",

@@ -589,7 +589,7 @@ export class SubtitleEngine {
         this.startSoopCaptions(streamData);
         break;
       default:
-        this.startUniversalSpeechRecognition();
+        // 其他暂无官方字幕流的平台保持纯净静默，绝不调用用户麦克风
         break;
     }
   }
@@ -1009,72 +1009,11 @@ export class SubtitleEngine {
       pollSoopCaptions();
       this.pollTimer = setInterval(pollSoopCaptions, 1500);
     }
-
-    // 4. 通用语音识别兜底
-    setTimeout(() => {
-      if (!apiSuccess && this.enabled && !this.lastCaptionText) {
-        console.log(`[KRStream] 窗口 #${this.slot.slotId} SOOP 频道 ${channelId} 启用语音识别`);
-        this.startUniversalSpeechRecognition();
-      }
-    }, 6000);
   }
 
   handleWsSubtitle(rawText, langCode, speaker) {
     if (!this.enabled || !rawText) return;
     this.handleSubtitleReceived(rawText, langCode, speaker);
-  }
-
-  /**
-   * 通用直播语音识别翻译 (Web Speech API)
-   */
-  startUniversalSpeechRecognition() {
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) return;
-
-    try {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = 'ko-KR';
-
-      recognition.onresult = async (event) => {
-        if (!this.enabled) return;
-        const results = event.results;
-        const last = results[results.length - 1];
-        if (last && last[0]) {
-          const koText = last[0].transcript.trim();
-          if (koText.length > 1) {
-            const primaryObj = getSubtitleLangObj(this.primaryLang) || SUBTITLE_LANGS[0];
-            const secObj = getSubtitleLangObj(this.secondaryLang) || SUBTITLE_LANGS[1];
-
-            const primaryText = await this.translate(koText, 'ko', primaryObj.transCode);
-            let secText = '';
-            if (this.isBilingual) {
-              secText = await this.translate(koText, 'ko', secObj.transCode);
-            }
-
-            this.renderSubtitle('', { primary: primaryText, secondary: this.isBilingual ? secText : '' });
-            this.addHistoryItem({
-              speaker: this.slot.currentStreamData?.streamer || '主播',
-              primary: primaryText,
-              secondary: this.isBilingual ? secText : '',
-              ko: koText,
-              zh: primaryObj.id === 'zh-CN' ? primaryText : (secObj.id === 'zh-CN' ? secText : '')
-            });
-          }
-        }
-      };
-
-      recognition.onerror = () => {};
-      recognition.onend = () => {
-        if (this.enabled) {
-          try { recognition.start(); } catch (e) {}
-        }
-      };
-
-      recognition.start();
-      this.recognition = recognition;
-    } catch (e) {}
   }
 
   renderSubtitle(speaker, content = {}) {

@@ -1343,9 +1343,34 @@ video {
 }
 
 .btn-subs.active {
-  color: var(--accent-live);
-  border-color: rgba(34, 197, 94, 0.4);
-  background: rgba(34, 197, 94, 0.08);
+  color: var(--accent-live) !important;
+  border-color: rgba(34, 197, 94, 0.4) !important;
+  background: rgba(34, 197, 94, 0.08) !important;
+  font-weight: 600;
+}
+
+.btn-danmaku {
+  transition: all 0.15s ease;
+}
+
+.btn-danmaku.active {
+  color: #00aeec !important;
+  border-color: rgba(0, 174, 236, 0.5) !important;
+  background: rgba(0, 174, 236, 0.15) !important;
+  font-weight: 600;
+}
+
+.btn-danmaku.active svg {
+  stroke: #00aeec !important;
+}
+
+.btn-danmaku:not(.active) {
+  color: var(--fg-muted);
+  opacity: 0.65;
+}
+
+.btn-danmaku:not(.active) svg {
+  stroke: var(--fg-muted);
 }
 
 /* 视频内悬浮字幕层 */

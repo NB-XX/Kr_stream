@@ -38,6 +38,8 @@ class StreamSlot {
     this.replayManifestUrl = null;
     this.replayTotalDuration = 0;
     this.isLowLatencyMode = initialData?.lowLatencyMode !== undefined ? Boolean(initialData.lowLatencyMode) : true;
+    this.isUserPaused = false;
+    this.wasPausedResume = false;
 
     this.renderDom();
     this.subtitleEngine = new SubtitleEngine(this);
@@ -285,12 +287,16 @@ class StreamSlot {
         this.video.play();
         btnPlayPause.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>`;
         this.isUserPaused = false;
+        this.wasPausedResume = true;
       } else {
         this.video.pause();
         btnPlayPause.innerHTML = `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>`;
         this.isUserPaused = true;
         if (this.hls) {
           this.hls.config.maxBufferLength = 600;
+          this.hls.config.maxMaxBufferLength = 600;
+          this.hls.config.liveMaxLatencyDuration = 600;
+          this.hls.config.liveMaxLatencyDurationCount = 300;
         }
       }
     });
@@ -731,27 +737,16 @@ class StreamSlot {
         enableWorker: true,
         lowLatencyMode: !isReplay,
         backBufferLength: 600, // 本地保留 10 分钟 (600秒) 历史缓存
-        maxBufferLength: isReplay ? 60 : 30,
-        maxMaxBufferLength: 600,
-        maxBufferSize: 60 * 1000 * 1000,
+        maxBufferLength: 600, // 允许最大 10 分钟本地缓存 (暂停时持续存入 MSE)
+        maxMaxBufferLength: 600, // 突破上限，避免 Hls.js 提前停止下载
+        maxBufferSize: 600 * 1000 * 1000, // 600MB 内存支持 1080p60 10分钟高码率
+        liveSyncDurationCount: this.isLowLatencyMode ? 1.5 : 3.0,
+        liveMaxLatencyDuration: 600, // 关键：允许延迟最大 10 分钟，暂停时不强制跳跃到最新直播边缘
+        liveMaxLatencyDurationCount: 300, // 关键：防止 Hls.js 内部看门狗在暂停几秒后自动强制跳跃
         xhrSetup: function (xhr) {
           xhr.withCredentials = false;
         }
       };
-
-      if (!isReplay) {
-        if (this.isLowLatencyMode) {
-          hlsConfig.liveSyncDurationCount = 1.5;
-          hlsConfig.liveMaxLatencyDurationCount = 3.0;
-          hlsConfig.maxBufferLength = 4;
-          hlsConfig.maxMaxBufferLength = 10;
-        } else {
-          hlsConfig.liveSyncDurationCount = 3.0;
-          hlsConfig.liveMaxLatencyDurationCount = 6.0;
-          hlsConfig.maxBufferLength = 30;
-          hlsConfig.maxMaxBufferLength = 60;
-        }
-      }
 
       this.hls = new Hls(hlsConfig);
 
@@ -809,6 +804,70 @@ class StreamSlot {
     }
   }
 
+  // 获取直播最前端边缘时间戳 (统一兼容 SOOP 与 Chzzk LL-HLS)
+  getLiveEdgePosition() {
+    if (!this.hls) return this.video?.currentTime || 0;
+
+    // 1. 尝试从 Hls.js liveSyncPosition 获取
+    if (typeof this.hls.liveSyncPosition === 'number' && this.hls.liveSyncPosition > 0) {
+      return this.hls.liveSyncPosition;
+    }
+
+    // 2. 尝试从 level details 获取 live edge
+    const details = this.hls.levels?.[this.hls.currentLevel]?.details || this.hls.levels?.[0]?.details;
+    if (details) {
+      if (typeof details.edge === 'number' && details.edge > 0) {
+        return details.edge;
+      }
+      if (details.fragments && details.fragments.length > 0) {
+        const lastFrag = details.fragments[details.fragments.length - 1];
+        if (typeof lastFrag.start === 'number' && typeof lastFrag.duration === 'number') {
+          return lastFrag.start + lastFrag.duration;
+        }
+      }
+    }
+
+    // 3. 尝试从 video.buffered 获取最远缓冲点
+    if (this.video && this.video.buffered && this.video.buffered.length > 0) {
+      const bufEnd = this.video.buffered.end(this.video.buffered.length - 1);
+      if (bufEnd > 0) {
+        return bufEnd;
+      }
+    }
+
+    return this.video?.currentTime || 0;
+  }
+
+  // 计算当前真实直播延迟 (精确解决 Chzzk 显示 0s 与 SOOP 延迟计算)
+  getLiveLatency() {
+    if (!this.video) return 0;
+    if (this.isCatchReplayMode) return 0;
+
+    // 1. 如果 Hls.js 原生 latency 可用且有效 (>= 0.5s)
+    if (this.hls && typeof this.hls.latency === 'number' && !isNaN(this.hls.latency) && this.hls.latency >= 0.5) {
+      return this.hls.latency;
+    }
+
+    // 2. 根据 liveEdgePosition - video.currentTime 计算
+    const curTime = this.video.currentTime || 0;
+    const liveEdge = this.getLiveEdgePosition();
+    let diff = liveEdge - curTime;
+
+    // 3. 如果 liveEdge 几乎等于 curTime (例如在 LL-HLS 或 Chzzk 播放到最新缓冲)
+    // 现实网络流中即使紧贴直播，由于切片发布与网络开销，至少有 1.5s ~ 2.0s 基础时差
+    if (diff < 1.0) {
+      if (this.video.buffered && this.video.buffered.length > 0) {
+        const bufEnd = this.video.buffered.end(this.video.buffered.length - 1);
+        const bufLead = Math.max(0, bufEnd - curTime);
+        diff = Math.max(1.5, bufLead + 1.5);
+      } else {
+        diff = 1.8;
+      }
+    }
+
+    return Math.max(0, diff);
+  }
+
   // 时钟同步与实时延迟监控
   startClockSync() {
     if (this.syncTimer) clearInterval(this.syncTimer);
@@ -827,8 +886,7 @@ class StreamSlot {
       }
 
       // 2. 计算当前延迟落后秒数 (即使暂停，也持续计算并更新延迟标签)
-      const livePos = this.hls?.liveSyncPosition || this.video.duration || 0;
-      const latency = Math.max(0, livePos - this.video.currentTime);
+      const latency = this.getLiveLatency();
       const latencyDisplay = this.formatLatency(latency);
 
       if (latency < 2.5) {
@@ -846,15 +904,18 @@ class StreamSlot {
       if (this.isLowLatencyMode && this.hls && !this.isCatchReplayMode && !this.video.paused && !this.isUserPaused) {
         // 超过本地 10 分钟 (600秒) 最大缓冲限制时，才被迫跃进至实时边缘
         if (latency > 600.0) {
+          const livePos = this.getLiveEdgePosition();
           this.video.currentTime = Math.max(0, livePos - 1.5);
           this.video.playbackRate = 1.0;
-        } else if (latency > 2.8 && latency <= 15.0) {
-          // 仅在 15 秒以内的轻微网络时差下微加速追平；大于 15 秒说明曾被暂停，保持原速播放保护本地已缓存的内容
+          this.wasPausedResume = false;
+        } else if (latency > 2.8 && latency <= 15.0 && !this.wasPausedResume) {
+          // 仅在 15 秒以内的轻微网络时差下微加速追平；若是暂停后复播，则不自动微加速以保证原速平滑观看
           this.video.playbackRate = 1.10;
         } else if (latency <= 1.8 && this.video.playbackRate !== 1.0) {
           this.video.playbackRate = 1.0;
+          this.wasPausedResume = false;
         }
-      } else if (this.video && this.video.playbackRate !== 1.0) {
+      } else if (this.video && this.video.playbackRate !== 1.0 && !this.btnCtrlCatchup?.classList.contains('active')) {
         this.video.playbackRate = 1.0;
       }
     }, 1000);
@@ -893,21 +954,23 @@ class StreamSlot {
   applyLowLatencySettings() {
     if (this.isCatchReplayMode) return;
     if (this.hls) {
+      this.hls.config.backBufferLength = 600;
+      this.hls.config.maxBufferLength = 600;
+      this.hls.config.maxMaxBufferLength = 600;
+      this.hls.config.maxBufferSize = 600 * 1000 * 1000;
+      this.hls.config.liveMaxLatencyDuration = 600;
+      this.hls.config.liveMaxLatencyDurationCount = 300;
+
       if (this.isLowLatencyMode) {
         this.hls.config.liveSyncDurationCount = 1.5;
-        this.hls.config.liveMaxLatencyDurationCount = 3.0;
-        this.hls.config.maxBufferLength = 4;
-        this.hls.config.maxMaxBufferLength = 10;
         // 开启后立即跃进至实时最新边缘
-        const livePos = this.hls.liveSyncPosition || this.video.duration || 0;
+        const livePos = this.getLiveEdgePosition();
         if (livePos > 0 && (livePos - this.video.currentTime) > 2.5) {
           this.video.currentTime = Math.max(0, livePos - 1.5);
         }
+        this.wasPausedResume = false;
       } else {
         this.hls.config.liveSyncDurationCount = 3.0;
-        this.hls.config.liveMaxLatencyDurationCount = 6.0;
-        this.hls.config.maxBufferLength = 30;
-        this.hls.config.maxMaxBufferLength = 60;
         if (this.video) {
           this.video.playbackRate = 1.0;
         }
@@ -918,9 +981,10 @@ class StreamSlot {
   // 一键追帧 (微加速 + 跃进实时边缘)
   catchUpLiveEdge() {
     if (!this.video || !this.hls) return;
-    const livePos = this.hls.liveSyncPosition || this.video.duration || 0;
+    const livePos = this.getLiveEdgePosition();
     const target = Math.max(0, livePos - 0.4);
     this.video.currentTime = target;
+    this.wasPausedResume = false;
 
     // 启动 1.15x 微加速直至对齐
     this.video.playbackRate = 1.15;
@@ -932,8 +996,8 @@ class StreamSlot {
     }
 
     const checkInterval = setInterval(() => {
-      const curDelay = (this.hls.liveSyncPosition || 0) - this.video.currentTime;
-      if (curDelay <= 0.8 || this.video.paused) {
+      const curDelay = this.getLiveLatency();
+      if (curDelay <= 1.6 || this.video.paused) {
         this.video.playbackRate = 1.0;
         clearInterval(checkInterval);
         if (this.btnCtrlCatchup) {
