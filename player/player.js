@@ -606,7 +606,6 @@ class StreamSlot {
     this.loading.classList.remove('active');
     if (this.guideComic) this.guideComic.classList.add('hidden');
   }
-  }
 
   async loadStream(streamData) {
     this.currentStreamData = { ...streamData };
