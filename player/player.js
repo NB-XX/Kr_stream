@@ -54,6 +54,7 @@ class StreamSlot {
     // 画质自适应与最高画质默认锁定
     this.isForcedHighestQuality = true;
     this.highestStallCount = 0;
+    this.selectedSoopQuality = initialData?.selectedQuality || 'original';
 
     // 视频专业调试统计面板 (Stats for Nerds / Debug Info)
     this.debugCard = null;
@@ -514,15 +515,20 @@ class StreamSlot {
       }
     });
 
-    // 画质切换
+    // 画质切换 (支持 SOOP 多画质重载与 Chzzk Hls.js 分级切换)
     this.selectQuality.addEventListener('change', (e) => {
-      const levelIdx = parseInt(e.target.value, 10);
-      this.isForcedHighestQuality = false; // 用户主动干预，解除最高画质强制锁定
-      if (this.hls) {
-        this.hls.currentLevel = levelIdx;
+      const val = e.target.value;
+      if (this.currentStreamData?.platform === 'soop') {
+        this.changeSoopQuality(val);
+      } else {
+        const levelIdx = parseInt(val, 10);
+        this.isForcedHighestQuality = false; // 用户主动干预，解除最高画质强制锁定
+        if (this.hls) {
+          this.hls.currentLevel = levelIdx;
+        }
+        const text = this.selectQuality.options[this.selectQuality.selectedIndex]?.text || '';
+        this.showToast(`已切换画质: ${text}`);
       }
-      const text = this.selectQuality.options[this.selectQuality.selectedIndex]?.text || '';
-      this.showToast(`已切换画质: ${text}`);
     });
 
     // 视频容器与画面区域右键呼出专业调试信息 (Stats for Nerds / Debug Info - 类似 YouTube / Chzzk)
@@ -587,8 +593,12 @@ class StreamSlot {
   changeCdn(newCdnKey) {
     this.selectedCdn = newCdnKey;
     const platform = this.currentStreamData?.platform;
-    const rawUrl = this.currentStreamData?.originalStreamUrl || this.currentStreamData?.streamUrl;
+    let rawUrl = this.currentStreamData?.originalStreamUrl || this.currentStreamData?.streamUrl;
     if (!rawUrl || !platform) return;
+
+    if (platform === 'soop' && this.selectedSoopQuality) {
+      rawUrl = rawUrl.replace(/\/(original|hd|sd)\/playlist\.m3u8/i, `/${this.selectedSoopQuality}/playlist.m3u8`);
+    }
 
     const finalUrl = StreamResolver.applyCdn(rawUrl, platform, newCdnKey);
     this.currentStreamData.streamUrl = finalUrl;
@@ -600,6 +610,38 @@ class StreamSlot {
       this.hls.startLoad();
       this.video.play().catch(() => {});
       setTimeout(() => this.hideLoading(), 1000);
+    }
+    this.manager.saveState();
+  }
+
+  changeSoopQuality(qualityKey) {
+    this.selectedSoopQuality = qualityKey;
+    this.isForcedHighestQuality = (qualityKey === 'original');
+    if (this.selectQuality) {
+      this.selectQuality.value = qualityKey;
+    }
+
+    const curUrl = this.currentStreamData?.originalStreamUrl || this.currentStreamData?.streamUrl;
+    if (!curUrl) return;
+
+    const newOriginal = curUrl.replace(/\/(original|hd|sd)\/playlist\.m3u8/i, `/${qualityKey}/playlist.m3u8`);
+    const cdnKey = this.selectedCdn || 'global';
+    const finalUrl = StreamResolver.applyCdn(newOriginal, 'soop', cdnKey);
+
+    this.currentStreamData.originalStreamUrl = newOriginal;
+    this.currentStreamData.streamUrl = finalUrl;
+    this.currentStreamData.selectedQuality = qualityKey;
+
+    const labelMap = { original: '1080p 原画', hd: '720p 高清', sd: '540p 标清' };
+    const label = labelMap[qualityKey] || qualityKey;
+    this.showToast(`已切换至 SOOP ${label}`);
+
+    if (this.hls) {
+      this.showLoading(`正在无缝切换至 ${label}...`);
+      this.hls.loadSource(finalUrl);
+      this.hls.startLoad();
+      this.video.play().catch(() => {});
+      setTimeout(() => this.hideLoading(), 800);
     }
     this.manager.saveState();
   }
@@ -679,6 +721,7 @@ class StreamSlot {
     if (streamData.selectedCdn) {
       this.selectedCdn = streamData.selectedCdn;
     }
+    this.selectedSoopQuality = streamData.selectedQuality || 'original';
     let { streamUrl, platform, streamer, title, channelId } = streamData;
 
     this.showLoading(`正在连接 ${streamer || channelId} 直播源...`);
@@ -738,6 +781,35 @@ class StreamSlot {
     }
 
     this.updateCdnDropdown();
+
+    // 若未附带开播时间 (例如从快捷输入直达)，异步增补频道开播状态与分区
+    if (!this.currentStreamData.openTime && platform === 'chzzk' && channelId) {
+      fetch(`https://api.chzzk.naver.com/service/v2/channels/${channelId}/live-detail`, {
+        headers: { 'front-client-platform-type': 'PC', 'Accept': 'application/json' }
+      })
+        .then((r) => r.json())
+        .then((d) => {
+          const c = d?.content;
+          if (c) {
+            const raw = c.openDate || c.liveOpenDate;
+            if (raw) {
+              const iso = raw.includes('T') ? raw : raw.replace(' ', 'T');
+              const tz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
+              const t = new Date(tz).getTime();
+              this.currentStreamData.openTime = (!isNaN(t) && t > 0) ? t : 0;
+              this.currentStreamData.openDate = raw;
+            }
+            if (c.liveCategoryValue) {
+              this.currentStreamData.category = c.liveCategoryValue;
+            }
+            if (c.channel?.channelName && (!this.currentStreamData.streamer || this.currentStreamData.streamer === channelId)) {
+              this.currentStreamData.streamer = c.channel.channelName;
+              if (this.labelStreamer) this.labelStreamer.textContent = c.channel.channelName;
+            }
+          }
+        })
+        .catch(() => {});
+    }
 
     // 恢复字幕设置与引擎 (SOOP具备字幕或CI.ME默认自动获取)
     if (streamData.subtitlePrimaryLang) {
@@ -872,16 +944,26 @@ class StreamSlot {
       });
 
       this.hls.on(Hls.Events.ERROR, (event, data) => {
-        // 最高画质分片加载异常或超时，自动平滑降级至 Auto (自适应码率)
-        if (this.isForcedHighestQuality && this.hls && this.hls.currentLevel !== -1) {
+        // 最高画质分片加载异常或超时，自动平滑降级至 Auto (Chzzk) 或高清 (SOOP)
+        if (this.isForcedHighestQuality && this.hls) {
           if (data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR || 
               data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT_ERROR ||
               (data.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR)) {
-            console.warn(`[KRStream] 窗口 #${this.slotId} 最高画质分片拉取受阻，自动降级至 Auto (自适应码率)...`);
-            this.isForcedHighestQuality = false;
-            this.hls.currentLevel = -1;
-            if (this.selectQuality) this.selectQuality.value = '-1';
-            this.showToast('最高画质分片网络拉取受阻，已自动切换至自适应画质 (Auto)');
+            if (this.currentStreamData?.platform === 'soop') {
+              if (this.selectedSoopQuality === 'original') {
+                console.warn(`[KRStream] 窗口 #${this.slotId} SOOP 原画拉取受阻，自动降级至 720p 高清...`);
+                this.isForcedHighestQuality = false;
+                this.changeSoopQuality('hd');
+                this.showToast('SOOP 原画分片网络拉取受阻，已自动降级至 720p 高清');
+                return;
+              }
+            } else if (this.hls.currentLevel !== -1) {
+              console.warn(`[KRStream] 窗口 #${this.slotId} 最高画质分片拉取受阻，自动降级至 Auto (自适应码率)...`);
+              this.isForcedHighestQuality = false;
+              this.hls.currentLevel = -1;
+              if (this.selectQuality) this.selectQuality.value = '-1';
+              this.showToast('最高画质分片网络拉取受阻，已自动切换至自适应画质 (Auto)');
+            }
           }
         }
 
@@ -913,15 +995,25 @@ class StreamSlot {
               break;
           }
         } else if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
-          // 最高画质下连续卡顿自动降级至 Auto
-          if (this.isForcedHighestQuality && this.hls && this.hls.currentLevel !== -1) {
+          // 最高画质下连续卡顿自动降级至 Auto (Chzzk) 或高清 (SOOP)
+          if (this.isForcedHighestQuality && this.hls) {
             this.highestStallCount = (this.highestStallCount || 0) + 1;
             if (this.highestStallCount >= 2) {
-              console.warn(`[KRStream] 窗口 #${this.slotId} 最高画质连续缓冲卡顿，自动降级至 Auto...`);
-              this.isForcedHighestQuality = false;
-              this.hls.currentLevel = -1;
-              if (this.selectQuality) this.selectQuality.value = '-1';
-              this.showToast('最高画质下网络下行带宽受限，已自动切换至自适应画质 (Auto)');
+              if (this.currentStreamData?.platform === 'soop') {
+                if (this.selectedSoopQuality === 'original') {
+                  console.warn(`[KRStream] 窗口 #${this.slotId} SOOP 原画连续缓冲卡顿，自动降级至 720p 高清...`);
+                  this.isForcedHighestQuality = false;
+                  this.changeSoopQuality('hd');
+                  this.showToast('原画下网络带宽受限，已自动降级至 720p 高清');
+                  return;
+                }
+              } else if (this.hls.currentLevel !== -1) {
+                console.warn(`[KRStream] 窗口 #${this.slotId} 最高画质连续缓冲卡顿，自动降级至 Auto...`);
+                this.isForcedHighestQuality = false;
+                this.hls.currentLevel = -1;
+                if (this.selectQuality) this.selectQuality.value = '-1';
+                this.showToast('最高画质下网络下行带宽受限，已自动切换至自适应画质 (Auto)');
+              }
             }
           }
 
@@ -1475,6 +1567,17 @@ class StreamSlot {
   }
 
   populateQualities(levels) {
+    if (this.currentStreamData?.platform === 'soop') {
+      this.selectQuality.innerHTML = `
+        <option value="original">1080p (原画最高, 8000 kbps)</option>
+        <option value="hd">720p (高清, 4000 kbps)</option>
+        <option value="sd">540p (标清, 1500 kbps)</option>
+      `;
+      this.selectedSoopQuality = this.selectedSoopQuality || 'original';
+      this.selectQuality.value = this.selectedSoopQuality;
+      return;
+    }
+
     this.selectQuality.innerHTML = '<option value="-1">自动 (Auto ABR)</option>';
     if (!levels || levels.length === 0) return;
 
@@ -1519,58 +1622,58 @@ class StreamSlot {
     card.id = `debug-card-${this.slotId}`;
     card.innerHTML = `
       <div class="debug-card-header">
-        <span class="debug-card-title">STATISTICS & DEBUG INFO</span>
+        <span class="debug-card-title">直播统计与调试信息 (DEBUG INFO)</span>
         <button class="btn-debug-close" id="btn-close-debug-${this.slotId}" title="关闭 (Esc / 再次右键)">✕</button>
       </div>
       <div class="debug-grid">
         <div class="debug-row">
-          <span class="debug-label">Resolution</span>
+          <span class="debug-label">视频分辨率</span>
           <span class="debug-val" id="dbg-res-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Frames</span>
+          <span class="debug-label">渲染帧率</span>
           <span class="debug-val" id="dbg-frames-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Bandwidth</span>
+          <span class="debug-label">网络带宽</span>
           <span class="debug-val" id="dbg-bw-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Bitrate</span>
+          <span class="debug-label">当前码率</span>
           <span class="debug-val" id="dbg-bitrate-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Buffer</span>
+          <span class="debug-label">视频缓冲</span>
           <div class="debug-meter-val">
             <span id="dbg-buffer-${this.slotId}">-- s</span>
             <div class="debug-gauge" id="dbg-gauge-buffer-${this.slotId}"></div>
           </div>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Latency</span>
+          <span class="debug-label">实时延迟</span>
           <div class="debug-meter-val">
             <span id="dbg-latency-${this.slotId}">-- s</span>
             <div class="debug-gauge" id="dbg-gauge-latency-${this.slotId}"></div>
           </div>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Codecs</span>
+          <span class="debug-label">编解码器</span>
           <span class="debug-val" id="dbg-codecs-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Platform / Streamer</span>
+          <span class="debug-label">平台 / 主播</span>
           <span class="debug-val" id="dbg-streamer-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Category</span>
+          <span class="debug-label">直播分区</span>
           <span class="debug-val" id="dbg-category-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">Broad Time</span>
+          <span class="debug-label">开播时间</span>
           <span class="debug-val" id="dbg-time-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
-          <span class="debug-label">CDN Node</span>
+          <span class="debug-label">CDN 节点</span>
           <span class="debug-val" id="dbg-cdn-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
@@ -1655,10 +1758,12 @@ class StreamSlot {
       });
       optimalStr = `${maxLvl.width || Math.round((maxLvl.height || 1080) * 16 / 9)}×${maxLvl.height || 1080}@60`;
       curLevel = this.hls.levels[this.hls.currentLevel] || maxLvl;
+    } else if (this.currentStreamData?.platform === 'soop') {
+      optimalStr = '1920×1080@60';
     }
     const elRes = this.debugCard.querySelector(`#dbg-res-${this.slotId}`);
     if (elRes) {
-      elRes.textContent = `${curW}×${curH} / optimal ${optimalStr}`;
+      elRes.textContent = `${curW}×${curH} / 最优 ${optimalStr}`;
     }
 
     // 2. Frames & Drops
@@ -1682,7 +1787,7 @@ class StreamSlot {
     }
     const elFrames = this.debugCard.querySelector(`#dbg-frames-${this.slotId}`);
     if (elFrames) {
-      elFrames.textContent = `${fps || (curW > 0 ? 60 : 0)} fps · dropped ${dropped} / ${total.toLocaleString()}`;
+      elFrames.textContent = `${fps || (curW > 0 ? 60 : 0)} fps · 丢帧 ${dropped} / ${total.toLocaleString()}`;
     }
 
     // 3. Bandwidth
@@ -1693,7 +1798,11 @@ class StreamSlot {
     }
 
     // 4. Bitrate
-    const bitrate = curLevel?.bitrate || 0;
+    let bitrate = curLevel?.bitrate || 0;
+    if (!bitrate && this.currentStreamData?.platform === 'soop') {
+      const q = this.selectedSoopQuality || 'original';
+      bitrate = q === 'original' ? 8000000 : (q === 'hd' ? 4000000 : 1500000);
+    }
     const elBitrate = this.debugCard.querySelector(`#dbg-bitrate-${this.slotId}`);
     if (elBitrate) {
       elBitrate.textContent = bitrate > 0 ? `${Math.round(bitrate / 1000).toLocaleString()} Kbps` : '--';
@@ -1743,7 +1852,7 @@ class StreamSlot {
     if (elStreamer) elStreamer.textContent = `[${platform}] ${streamer}`;
 
     // 9. Category
-    const category = this.currentStreamData?.category || 'Live';
+    const category = this.currentStreamData?.category || '综合直播';
     const elCat = this.debugCard.querySelector(`#dbg-category-${this.slotId}`);
     if (elCat) elCat.textContent = category;
 
@@ -1751,6 +1860,17 @@ class StreamSlot {
     const elTime = this.debugCard.querySelector(`#dbg-time-${this.slotId}`);
     if (elTime) {
       let openTime = this.currentStreamData?.openTime;
+      if (!openTime && (this.currentStreamData?.openDate || this.currentStreamData?.liveOpenDate)) {
+        const raw = this.currentStreamData.openDate || this.currentStreamData.liveOpenDate;
+        if (typeof raw === 'number') {
+          openTime = raw > 1e11 ? raw : raw * 1000;
+        } else if (typeof raw === 'string') {
+          const iso = raw.includes('T') ? raw : raw.replace(' ', 'T');
+          const tz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
+          const t = new Date(tz).getTime();
+          openTime = (!isNaN(t) && t > 0) ? t : (Date.parse(raw) || 0);
+        }
+      }
       if (!openTime && this.currentStreamData?.btime) {
         openTime = Date.now() - this.currentStreamData.btime * 1000;
       }
@@ -1758,10 +1878,12 @@ class StreamSlot {
         const d = new Date(openTime);
         const timeStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
         const durSec = Math.max(0, Math.floor((Date.now() - openTime) / 1000));
-        const durStr = `${Math.floor(durSec / 3600)}h ${Math.floor((durSec % 3600) / 60)}m`;
-        elTime.textContent = `${timeStr} (${durStr})`;
+        const durH = Math.floor(durSec / 3600);
+        const durM = Math.floor((durSec % 3600) / 60);
+        const durStr = durH > 0 ? `${durH}小时${durM}分` : `${durM}分`;
+        elTime.textContent = `${timeStr} (已播 ${durStr})`;
       } else {
-        elTime.textContent = '--';
+        elTime.textContent = '暂无记录';
       }
     }
 

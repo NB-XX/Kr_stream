@@ -299,46 +299,20 @@ export class StreamResolver {
       throw new Error('未能获取 SOOP 播放凭证 AID');
     }
 
-    // 第三步: 调度直播分流服务器，优先获取包含全画质阶梯的 Master M3U8 (master-hls)
-    let viewUrl = null;
-    const masterAssignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&use_cors=true&broad_key=${bno}-common-master-hls&player_mode=landing`;
-    try {
-      const res3 = await fetch(masterAssignUrl, {
-        headers: {
-          'Origin': 'https://play.sooplive.com',
-          'Referer': `https://play.sooplive.com/${cleanId}`,
-          'X-Forwarded-For': '211.234.118.1',
-          'Client-IP': '211.234.118.1',
-          'X-Real-IP': '211.234.118.1'
-        },
-        credentials: 'omit'
-      });
-      if (res3.ok) {
-        const assignData = await res3.json();
-        if (assignData?.view_url) {
-          viewUrl = assignData.view_url;
-        }
-      }
-    } catch (e) {
-      console.warn('[SOOP] 获取 master-hls 多码率流失败，准备降级 original-hls:', e);
-    }
-
-    // 若未获取到 master-hls，降级回退至 original-hls 单码率流
-    if (!viewUrl) {
-      const origAssignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&broad_key=${bno}-common-original-hls`;
-      const resOrig = await fetch(origAssignUrl, {
-        headers: {
-          'Origin': 'https://play.sooplive.com',
-          'Referer': `https://play.sooplive.com/${cleanId}`,
-          'X-Forwarded-For': '211.234.118.1',
-          'Client-IP': '211.234.118.1',
-          'X-Real-IP': '211.234.118.1'
-        },
-        credentials: 'omit'
-      });
-      const assignData = await resOrig.json();
-      viewUrl = assignData?.view_url;
-    }
+    // 第三步: 调度直播分流服务器，获取真实的 Original HLS 直播流
+    const assignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&broad_key=${bno}-common-original-hls`;
+    const res3 = await fetch(assignUrl, {
+      headers: {
+        'Origin': 'https://play.sooplive.com',
+        'Referer': `https://play.sooplive.com/${cleanId}`,
+        'X-Forwarded-For': '211.234.118.1',
+        'Client-IP': '211.234.118.1',
+        'X-Real-IP': '211.234.118.1'
+      },
+      credentials: 'omit'
+    });
+    const assignData = await res3.json();
+    const viewUrl = assignData?.view_url;
 
     if (!viewUrl) {
       throw new Error('SOOP 未分配到有效直播流地址，可能正在转码或流未就绪');
@@ -643,6 +617,19 @@ export class StreamResolver {
     const prefCdn = options.cdnPreference || 'default';
     const finalStreamUrl = this.applyCdn(streamUrl, 'chzzk', prefCdn);
 
+    const rawOpenDate = content.openDate || content.liveOpenDate || playbackObj?.live?.start || playbackObj?.live?.open || '';
+    let openTime = 0;
+    if (rawOpenDate) {
+      if (typeof rawOpenDate === 'number') {
+        openTime = rawOpenDate > 1e11 ? rawOpenDate : rawOpenDate * 1000;
+      } else if (typeof rawOpenDate === 'string') {
+        const isoStr = rawOpenDate.includes('T') ? rawOpenDate : rawOpenDate.replace(' ', 'T');
+        const withTz = isoStr.includes('+') || isoStr.includes('Z') ? isoStr : `${isoStr}+09:00`;
+        const t = new Date(withTz).getTime();
+        openTime = (!isNaN(t) && t > 0) ? t : (Date.parse(rawOpenDate) || 0);
+      }
+    }
+
     return {
       platform: 'chzzk',
       channelId: cleanId,
@@ -657,8 +644,8 @@ export class StreamResolver {
       availableCdns: PLATFORM_CDNS.chzzk,
       viewers: viewers,
       category: category,
-      openTime: content.openDate ? new Date(content.openDate.replace(' ', 'T') + '+09:00').getTime() : 0,
-      openDate: content.openDate || '',
+      openTime: openTime,
+      openDate: rawOpenDate || '',
       thumbnail: content.liveImageUrl ? content.liveImageUrl.replace('{type}', '720') : avatar
     };
   }

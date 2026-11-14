@@ -209,17 +209,32 @@ async function runTests() {
   assert(playerJsCode.includes('showToast('), 'showToast method must be defined in player.js');
   console.log('  Pass: 2.0x catch-up, safe latency clamping, right-click settings menu, and in-slot toast verified.');
 
-  console.log('[Test 9] SOOP Master-HLS quality ladder, Default highest quality, and Video Debug Info (Stats for Nerds)');
+  console.log('[Test 9] SOOP direct HLS resolution, SOOP quality ladder switching, Chinese Debug Info, and Chzzk broadcast start time');
   const streamResolverCode = fs.readFileSync('core/stream-resolver.js', 'utf8');
-  assert(streamResolverCode.includes('common-master-hls'), 'SOOP resolver must query common-master-hls for full quality ladders');
-  assert(streamResolverCode.includes('common-original-hls'), 'SOOP resolver must have original-hls fallback');
+  assert(streamResolverCode.includes('common-original-hls'), 'SOOP resolver must query common-original-hls directly');
+  assert(playerJsCode.includes('changeSoopQuality'), 'StreamSlot must support changeSoopQuality for SOOP resolution switching');
+  assert(playerJsCode.includes('selectedSoopQuality'), 'StreamSlot must track selectedSoopQuality');
   assert(playerJsCode.includes('isForcedHighestQuality'), 'StreamSlot must track highest quality forced lock');
   assert(playerJsCode.includes('highestIdx'), 'populateQualities must compute the highest resolution/bitrate level index');
   assert(playerJsCode.includes('slot-debug-card'), 'Stats for Nerds / Debug Info card must be defined in player.js');
   assert(playerJsCode.includes('toggleDebugInfo'), 'toggleDebugInfo method must exist in StreamSlot');
+  assert(playerJsCode.includes('视频分辨率'), 'Debug info must have Chinese label: 视频分辨率');
+  assert(playerJsCode.includes('渲染帧率'), 'Debug info must have Chinese label: 渲染帧率');
+  assert(playerJsCode.includes('网络带宽'), 'Debug info must have Chinese label: 网络带宽');
+  assert(playerJsCode.includes('当前码率'), 'Debug info must have Chinese label: 当前码率');
+  assert(playerJsCode.includes('视频缓冲'), 'Debug info must have Chinese label: 视频缓冲');
+  assert(playerJsCode.includes('实时延迟'), 'Debug info must have Chinese label: 实时延迟');
+  assert(playerJsCode.includes('编解码器'), 'Debug info must have Chinese label: 编解码器');
+  assert(playerJsCode.includes('平台 / 主播'), 'Debug info must have Chinese label: 平台 / 主播');
+  assert(playerJsCode.includes('直播分区'), 'Debug info must have Chinese label: 直播分区');
+  assert(playerJsCode.includes('开播时间'), 'Debug info must have Chinese label: 开播时间');
+  assert(playerJsCode.includes('CDN 节点'), 'Debug info must have label: CDN 节点');
+  assert(playerJsCode.includes('Session ID'), 'Debug info must have label: Session ID');
+  assert(streamResolverCode.includes('rawOpenDate'), 'StreamResolver must parse rawOpenDate with timezone normalization');
+  assert(accountManagerCode.includes('openTime'), 'AccountManager must extract openTime for both SOOP and Chzzk');
   assert(playerCssCode.includes('.slot-debug-card'), 'slot-debug-card CSS styles must exist in player.css');
   assert(playerCssCode.includes('.debug-tick'), 'Gauge meter ticks must exist in player.css');
-  console.log('  Pass: SOOP master-hls multi-quality ladder, highest quality default & auto-fallback, and debug panel verified.');
+  console.log('  Pass: SOOP playback & quality switching, Chinese Debug Info, and Chzzk start time verified.');
 
   console.log('\nAll integration tests passed successfully.');
 }

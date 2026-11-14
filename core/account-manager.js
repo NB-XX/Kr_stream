@@ -532,6 +532,15 @@ export class AccountManager {
       // 直播标题 (优先中文翻译/原文)
       const title = item.broad_title_translate || item.broad_title || item.station_name || item.broad_info?.broad_title || '';
 
+      const rawBroadStart = item.broad_start || item.broad_info?.broad_start || '';
+      let openTime = 0;
+      if (rawBroadStart) {
+        const iso = rawBroadStart.includes('T') ? rawBroadStart : rawBroadStart.replace(' ', 'T');
+        const withTz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
+        const t = new Date(withTz).getTime();
+        openTime = (!isNaN(t) && t > 0) ? t : 0;
+      }
+
       return {
         platform: 'soop',
         channelId: cleanUserId,
@@ -540,6 +549,8 @@ export class AccountManager {
         broadNo: broadNo,
         title: title,
         viewers: viewers,
+        openTime: openTime,
+        openDate: rawBroadStart,
         thumbnail: avatar, // 卡片头像统一展示主播个人头像，避免显示16:9的直播截图
         avatar: avatar,
         liveThumb: liveThumb,
@@ -580,6 +591,14 @@ export class AccountManager {
       const isOpen = Boolean(item.streamer?.openLive || ch.openLive);
       const avatar = ch.channelImageUrl || '';
       const liveThumb = liveInfo.liveImageUrl ? liveInfo.liveImageUrl.replace('{type}', '720') : '';
+      const rawOpen = liveInfo.openDate || liveInfo.liveOpenDate || '';
+      let openTime = 0;
+      if (rawOpen) {
+        const isoStr = rawOpen.includes('T') ? rawOpen : rawOpen.replace(' ', 'T');
+        const withTz = isoStr.includes('+') || isoStr.includes('Z') ? isoStr : `${isoStr}+09:00`;
+        const t = new Date(withTz).getTime();
+        openTime = (!isNaN(t) && t > 0) ? t : 0;
+      }
 
       return {
         platform: 'chzzk',
@@ -590,6 +609,8 @@ export class AccountManager {
         hasTimeMachine: Boolean(liveInfo.timeMachine),
         title: liveInfo.liveTitle || '',
         viewers: liveInfo.concurrentUserCount || 0,
+        openDate: rawOpen,
+        openTime: openTime,
         thumbnail: avatar, // 卡片头像统一展示主播头像，避免在圆角小头像内显示16:9直播截图
         avatar: avatar,
         liveThumb: liveThumb,
