@@ -268,6 +268,17 @@ async function runTests() {
   assert(playerCssCode.includes('rgba(18, 18, 22, 0.92)'), 'Debug card must use modern frosted glass dark background');
   console.log('  Pass: SOOP CDN 403 prevention, master playlist multi-level ladder, and compact Debug Info verified.');
 
+  console.log('[Test 13] Chromecast Authentication Key for 1080p/1440p master playlist, Chzzk openTime URL propagation, and 2-column Debug Info');
+  assert(streamResolverCode.includes('chromecast_authentication_key'), 'StreamResolver must retrieve chromecast_authentication_key to bypass SOOP 540p throttling');
+  assert(streamResolverCode.includes('api.m.sooplive.com/broad/a/watch'), 'StreamResolver must query api.m.sooplive.com watch endpoint');
+  const bgCode = fs.readFileSync('background.js', 'utf8');
+  assert(bgCode.includes('openTime'), 'background.js must forward openTime in openPlayerTab');
+  const popupJsCode = fs.readFileSync('popup/popup.js', 'utf8');
+  assert(popupJsCode.includes('openTime: currentResolvedData.openTime'), 'popup.js must pass openTime to OPEN_PLAYER');
+  assert(playerCssCode.includes('.debug-label {'), 'Debug card label CSS must exist');
+  assert(playerCssCode.includes('text-align: left;'), 'Debug card values and labels must be left-aligned matching Chzzk visual layout');
+  console.log('  Pass: Chromecast auth 1080p master playlist, metadata propagation, and 2-column Debug Info verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

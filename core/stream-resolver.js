@@ -331,38 +331,81 @@ export class StreamResolver {
       targetQuality = is1440p ? 'hd8k' : 'original';
     }
 
-    // 第二步: 获取播放鉴权 AID Token (继承韩国地区破限身份)
-    const aidEp = endpoints[0];
-    const body2 = new URLSearchParams({
-      bid: cleanId,
-      bno: bno,
-      type: 'aid',
-      pwd: '',
-      player_type: 'html5',
-      stream_type: 'common',
-      quality: targetQuality,
-      mode: 'landing',
-      from_api: '0',
-      is_revive: 'false',
-      geo_cc: 'KR'
-    });
+    // 第二步: 获取播放鉴权 Token (优先从移动/OTT 端获取 chromecast_authentication_key 破除 540P 画质锁与 P2P 限制，备用 Web 端 AID)
+    let aid = null;
+    let ccAuth = null;
+    const watchEndpoints = [
+      'https://api.m.sooplive.com/broad/a/watch',
+      'https://api.m.sooplive.co.kr/broad/a/watch'
+    ];
 
-    const res2 = await fetch(aidEp, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Origin': 'https://play.sooplive.com',
-        'Referer': `https://play.sooplive.com/${cleanId}`,
-        'X-Forwarded-For': '211.234.118.1',
-        'Client-IP': '211.234.118.1',
-        'X-Real-IP': '211.234.118.1'
-      },
-      body: body2.toString(),
-      credentials: 'omit'
-    });
+    for (const wep of watchEndpoints) {
+      try {
+        const watchBody = new URLSearchParams({
+          broad_no: bno,
+          bj_id: cleanId,
+          type: 'aid',
+          stream_type: 'common',
+          quality: 'original'
+        });
+        const resWatch = await fetch(wep, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://play.sooplive.com',
+            'Referer': `https://play.sooplive.com/${cleanId}`,
+            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15'
+          },
+          body: watchBody.toString(),
+          credentials: 'omit'
+        });
+        if (resWatch.ok) {
+          const wdata = await resWatch.json().catch(() => null);
+          if (wdata?.data?.chromecast_authentication_key) {
+            ccAuth = wdata.data.chromecast_authentication_key;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
 
-    const data2 = await res2.json();
-    const aid = data2?.CHANNEL?.AID;
+    // 若未获取到 Chromecast Auth Key，向 Web player_live_api.php 请求备用 Web AID
+    let webAid = null;
+    try {
+      const aidEp = endpoints[0];
+      const body2 = new URLSearchParams({
+        bid: cleanId,
+        bno: bno,
+        type: 'aid',
+        pwd: '',
+        player_type: 'html5',
+        stream_type: 'common',
+        quality: targetQuality,
+        mode: 'landing',
+        from_api: '0',
+        is_revive: 'false',
+        geo_cc: 'KR'
+      });
+
+      const res2 = await fetch(aidEp, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Origin': 'https://play.sooplive.com',
+          'Referer': `https://play.sooplive.com/${cleanId}`,
+          'X-Forwarded-For': '211.234.118.1',
+          'Client-IP': '211.234.118.1',
+          'X-Real-IP': '211.234.118.1'
+        },
+        body: body2.toString(),
+        credentials: 'omit'
+      });
+
+      const data2 = await res2.json().catch(() => null);
+      webAid = data2?.CHANNEL?.AID;
+    } catch (_) {}
+
+    aid = ccAuth || webAid;
     if (!aid) {
       throw new Error('未能获取 SOOP 播放凭证 AID');
     }
@@ -390,9 +433,10 @@ export class StreamResolver {
       } catch (_) {}
     }
 
-    // 若未获取到 master 聚合流或指定了单清晰度，请求对应单流 (如 original, hd8k, hd4k, hd)
+    // 若未获取到 master 聚合流或指定了单清晰度，请求对应单流 (如 common-original-hls, hd8k, hd4k, hd)
     if (!viewUrl) {
-      let assignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&use_cors=true&broad_key=${bno}-common-${targetQuality}-hls&player_mode=landing`;
+      const qKey = targetQuality === 'original' ? 'common-original-hls' : `common-${targetQuality}-hls`;
+      let assignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&use_cors=true&broad_key=${bno}-${qKey}&player_mode=landing`;
       let res3 = await fetch(assignUrl, {
         headers: {
           'Origin': 'https://play.sooplive.com',
@@ -406,7 +450,7 @@ export class StreamResolver {
       let assignData = await res3.json().catch(() => null);
       viewUrl = assignData?.view_url;
 
-      // 容灾机制: 若以 original 请求 1440p 流受阻或未分配，自动降级调度 1080p (hd8k)
+      // 容灾机制: 若以 original 请求 1440p 流未分配，自动降级调度 1080p (hd8k)
       if (!viewUrl && targetQuality === 'original' && is1440p) {
         console.warn(`[SOOP] 频道 ${cleanId} 1440p 原画调度未响应，自动降级至 1080p (hd8k)...`);
         targetQuality = 'hd8k';
@@ -464,7 +508,7 @@ export class StreamResolver {
       resolution: channel.RESOLUTION || (is1440p ? '2560x1440' : '1920x1080'),
       viewPreset: channel.VIEWPRESET || [],
       selectedQuality: targetQuality,
-      qualities: is1440p ? ['original', 'hd8k', 'hd4k', 'hd', 'sd'] : ['original', 'hd', 'sd']
+      qualities: is1440p ? ['original', 'hd8k', 'hd4k', 'hd', 'sd'] : ['original', 'hd4k', 'hd', 'sd']
     };
   }
 

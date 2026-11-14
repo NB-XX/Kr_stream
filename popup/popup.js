@@ -116,6 +116,9 @@ function initResolver() {
           streamer: currentResolvedData.streamer,
           title: currentResolvedData.title,
           channelId: currentResolvedData.channelId,
+          openTime: currentResolvedData.openTime,
+          openDate: currentResolvedData.openDate,
+          category: currentResolvedData.category,
           mode: 'single'
         }
       });
@@ -133,6 +136,9 @@ function initResolver() {
           streamer: currentResolvedData.streamer,
           title: currentResolvedData.title,
           channelId: currentResolvedData.channelId,
+          openTime: currentResolvedData.openTime,
+          openDate: currentResolvedData.openDate,
+          category: currentResolvedData.category,
           mode: 'dual',
           targetSlot: 'b'
         }

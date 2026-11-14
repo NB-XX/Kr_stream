@@ -118,7 +118,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 /**
  * 打开或聚焦独立播放器工作台标签页
  */
-async function openPlayerTab({ input, streamUrl, platform, title, streamer, channelId, mode }) {
+async function openPlayerTab({ input, streamUrl, platform, title, streamer, channelId, mode, openTime, openDate, category }) {
   const playerUrl = chrome.runtime.getURL('player/player.html');
   const tabs = await chrome.tabs.query({});
   const existing = tabs.find((t) => t.url && t.url.includes('player/player.html'));
@@ -131,6 +131,9 @@ async function openPlayerTab({ input, streamUrl, platform, title, streamer, chan
   if (streamer) query.set('streamer', streamer);
   if (channelId) query.set('channelId', channelId);
   if (mode) query.set('mode', mode);
+  if (openTime) query.set('openTime', String(openTime));
+  if (openDate) query.set('openDate', String(openDate));
+  if (category) query.set('category', category);
 
   const fullUrl = `${playerUrl}?${query.toString()}`;
 

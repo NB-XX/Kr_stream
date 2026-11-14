@@ -159,6 +159,20 @@ export class AccountManager {
         }
       });
 
+      rulesToAdd.push({
+        id: 10012,
+        priority: 28,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: soopLiveHeaders
+        },
+        condition: {
+          urlFilter: '/broad/a/watch',
+          initiatorDomains: [extensionId],
+          resourceTypes: ['xmlhttprequest', 'other']
+        }
+      });
+
       // 4. AfreecaTV API 备用凭证注入规则 (Rule 10004)
       if (soopCookie) {
         rulesToAdd.push({

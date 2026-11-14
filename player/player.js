@@ -867,8 +867,10 @@ class StreamSlot {
               const iso = raw.includes('T') ? raw : raw.replace(' ', 'T');
               const tz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
               const t = new Date(tz).getTime();
-              this.currentStreamData.openTime = (!isNaN(t) && t > 0) ? t : 0;
+              const validTime = (!isNaN(t) && t > 0) ? t : 0;
+              this.currentStreamData.openTime = validTime;
               this.currentStreamData.openDate = raw;
+              this.streamStartTime = validTime;
             }
             if (c.liveCategoryValue) {
               this.currentStreamData.category = c.liveCategoryValue;
@@ -3778,6 +3780,10 @@ class AppHub {
       const subS = params.get('subS') || 'ko';
       const subBi = params.get('subBi') !== '0';
       const subSize = params.get('subSize') || 'medium';
+      const openTimeParam = params.get('openTime');
+      const openTime = openTimeParam ? (parseInt(openTimeParam, 10) || 0) : 0;
+      const openDate = params.get('openDate') || '';
+      const category = params.get('category') || '';
 
       slot.loadStream({
         streamUrl,
@@ -3785,6 +3791,9 @@ class AppHub {
         streamer: streamer,
         title: params.get('title') || '',
         channelId: params.get('channelId') || '',
+        openTime: openTime,
+        openDate: openDate,
+        category: category,
         danmakuEnabled: danmakuEnabled,
         subtitlesEnabled: subsEnabled,
         subtitlePrimaryLang: subP,
