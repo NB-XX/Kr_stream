@@ -361,7 +361,10 @@ export class StreamResolver {
       targetQuality = is1440p ? 'hd8k' : 'original';
     }
 
-    // 第二步: 获取播放鉴权 Token (优先从移动/OTT 端获取 chromecast_authentication_key 破除 540P 画质锁与 P2P 限制，备用 Web 端 AID)
+    // 第二步: 获取播放鉴权 Token
+    // 优先从移动/OTT 端 (api.m.sooplive.com) 获取 chromecast_authentication_key，该 key 完全绕过 Web 端
+    // P2P 画质锁，可直接解锁 1080p/1440p 全清晰度阶梯。DNR Rule 10013 确保此端点不注入韩国 IP 头，
+    // 避免 SOOP 服务器将请求路由至国内 P2P CDN 策略节点，导致画质退化为 540P。
     let aid = null;
     let ccAuth = null;
     const watchEndpoints = [
@@ -391,49 +394,61 @@ export class StreamResolver {
         });
         if (resWatch.ok) {
           const wdata = await resWatch.json().catch(() => null);
-          if (wdata?.data?.chromecast_authentication_key) {
-            ccAuth = wdata.data.chromecast_authentication_key;
+          // 优先 chromecast_authentication_key，备用 hls_authentication_key (同等效果)
+          const key = wdata?.data?.chromecast_authentication_key || wdata?.data?.hls_authentication_key;
+          if (key) {
+            ccAuth = key;
+            console.log(`[SOOP] CC auth acquired via ${wep.includes('.co.kr') ? '.co.kr' : '.com'}`);
             break;
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        console.warn('[SOOP] CC auth fetch failed:', e?.message);
+      }
+    }
+
+    if (!ccAuth) {
+      console.warn('[SOOP] CC auth not available, falling back to web AID (quality may be capped at 540P)');
     }
 
     // 若未获取到 Chromecast Auth Key，向 Web player_live_api.php 请求备用 Web AID
+    // 注意: Web AID 由 SOOP 服务器根据来源判断授权级别，KR IP + html5 player_type 下仍可能仅授权 540P
     let webAid = null;
-    try {
-      const aidEp = endpoints[0];
-      const body2 = new URLSearchParams({
-        bid: cleanId,
-        bno: bno,
-        type: 'aid',
-        pwd: '',
-        player_type: 'html5',
-        stream_type: 'common',
-        quality: targetQuality,
-        mode: 'landing',
-        from_api: '0',
-        is_revive: 'false',
-        geo_cc: 'KR'
-      });
+    if (!ccAuth) {
+      try {
+        const aidEp = endpoints[0];
+        const body2 = new URLSearchParams({
+          bid: cleanId,
+          bno: bno,
+          type: 'aid',
+          pwd: '',
+          player_type: 'html5',
+          stream_type: 'common',
+          quality: targetQuality,
+          mode: 'landing',
+          from_api: '0',
+          is_revive: 'false',
+          geo_cc: 'KR'
+        });
 
-      const res2 = await fetch(aidEp, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Origin': 'https://play.sooplive.com',
-          'Referer': `https://play.sooplive.com/${cleanId}`,
-          'X-Forwarded-For': '211.234.118.1',
-          'Client-IP': '211.234.118.1',
-          'X-Real-IP': '211.234.118.1'
-        },
-        body: body2.toString(),
-        credentials: 'omit'
-      });
+        const res2 = await fetch(aidEp, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://play.sooplive.com',
+            'Referer': `https://play.sooplive.com/${cleanId}`,
+            'X-Forwarded-For': '211.234.118.1',
+            'Client-IP': '211.234.118.1',
+            'X-Real-IP': '211.234.118.1'
+          },
+          body: body2.toString(),
+          credentials: 'omit'
+        });
 
-      const data2 = await res2.json().catch(() => null);
-      webAid = data2?.CHANNEL?.AID;
-    } catch (_) {}
+        const data2 = await res2.json().catch(() => null);
+        webAid = data2?.CHANNEL?.AID;
+      } catch (_) {}
+    }
 
     aid = ccAuth || webAid;
     if (!aid) {

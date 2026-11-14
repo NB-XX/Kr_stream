@@ -66,7 +66,7 @@ export class AccountManager {
     try {
       const extensionId = chrome.runtime.id;
       const rulesToAdd = [];
-      const ruleIdsToRemove = [10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012];
+      const ruleIdsToRemove = [10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013];
 
       // 1. Chzzk API 动态凭证注入规则 (Rule 10001)
       const chzzkCookie = await this.getCookieString(['naver.com', 'chzzk.naver.com']);
@@ -159,12 +159,22 @@ export class AccountManager {
         }
       });
 
+      // Rule 10013: Chromecast auth endpoint - only Origin/Referer + mobile UA, NO Korean IP headers
+      // The CC auth key grants full quality ladder (1080p/1440p). Korean IP spoofing on this endpoint
+      // causes SOOP to enforce P2P restrictions, breaking the quality unlock.
+      const ccAuthHeaders = [
+        { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
+        { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' }
+      ];
+      if (soopCookie) {
+        ccAuthHeaders.push({ header: 'Cookie', operation: 'set', value: soopCookie });
+      }
       rulesToAdd.push({
-        id: 10012,
-        priority: 28,
+        id: 10013,
+        priority: 30,
         action: {
           type: 'modifyHeaders',
-          requestHeaders: soopLiveHeaders
+          requestHeaders: ccAuthHeaders
         },
         condition: {
           urlFilter: '/broad/a/watch',
@@ -321,10 +331,11 @@ export class AccountManager {
         }
       });
 
-      // 11. SOOP 跨域流媒体与分片请求头注入 (Rule 10012: 避免 CDN 节点对 extension origin 403 Forbidden)
+      // 11. SOOP 全域 CDN 跨域请求头注入 (Rule 10012: 避免 CDN 节点对 extension origin 403 Forbidden)
+      // 注意: 低优先级 (28)，高优先级规则 (10003/10011/10013) 会覆盖此规则对特定端点的匹配
       rulesToAdd.push({
         id: 10012,
-        priority: 28,
+        priority: 24,
         action: {
           type: 'modifyHeaders',
           requestHeaders: [
