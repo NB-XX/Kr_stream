@@ -226,7 +226,7 @@ class StreamSlot {
             <option value="default">CDN: 自动</option>
           </select>
           <!-- 实时字幕开关 -->
-          <button class="ctrl-icon-btn btn-subs" id="btn-subs-${this.slotId}" title="开启实时字幕 (右键设置)">
+          <button class="ctrl-icon-btn btn-subs" id="btn-subs-${this.slotId}" title="实时字幕: 开启 (右键设置)">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span class="btn-subs-tag" id="btn-subs-tag-${this.slotId}">字幕</span>
           </button>

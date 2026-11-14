@@ -98,28 +98,18 @@ export class SubtitleEngine {
     this.mainEl = overlay.querySelector('.sub-main');
     this.secEl = overlay.querySelector('.sub-sec');
 
-    // 2. 绑定控制栏按钮 (左键打开/关闭菜单，右键唤出菜单，悬浮展开)
+    // 2. 绑定控制栏按钮 (左键控制开关与弹幕一致，右键唤出设置菜单)
     this.btnEl = this.slot.dom.querySelector(`#btn-subs-${this.slot.slotId}`);
     if (this.btnEl) {
       this.btnEl.addEventListener('click', (e) => {
         e.stopPropagation();
-        this.toggleSettingsMenu(e);
+        this.toggle();
       });
 
       this.btnEl.addEventListener('contextmenu', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.showSettingsMenu(e);
-      });
-
-      let hoverTimer = null;
-      this.btnEl.addEventListener('mouseenter', () => {
-        hoverTimer = setTimeout(() => {
-          this.showSettingsMenu();
-        }, 180);
-      });
-      this.btnEl.addEventListener('mouseleave', () => {
-        if (hoverTimer) clearTimeout(hoverTimer);
+        this.toggleSettingsMenu(e);
       });
     }
 
@@ -145,10 +135,7 @@ export class SubtitleEngine {
       <!-- 主面板：语言选择与双语开关 -->
       <div class="bili-sub-view bili-sub-main-view" id="bili-main-view-${this.slot.slotId}">
         <div class="bili-sub-header">
-          <span class="bili-sub-title">字幕</span>
-          <button class="bili-sub-toggle-btn ${this.enabled ? 'active' : ''}" id="bili-toggle-${this.slot.slotId}">
-            ${this.enabled ? '关闭' : '开启'}
-          </button>
+          <span class="bili-sub-title">字幕设置</span>
         </div>
         <div class="bili-sub-divider"></div>
 
@@ -250,16 +237,7 @@ export class SubtitleEngine {
     this.menuEl = menu;
 
     // 事件绑定
-    // 1. 开启/关闭开关
-    const toggleBtn = menu.querySelector(`#bili-toggle-${this.slot.slotId}`);
-    if (toggleBtn) {
-      toggleBtn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        this.toggle();
-      });
-    }
-
-    // 2. 双语开关
+    // 1. 双语开关
     const biChk = menu.querySelector(`#bili-bilingual-chk-${this.slot.slotId}`);
     if (biChk) {
       biChk.addEventListener('change', (e) => {
@@ -391,14 +369,6 @@ export class SubtitleEngine {
   updateMenuUI() {
     if (!this.menuEl) return;
     const sid = this.slot.slotId;
-
-    // 状态切换按钮
-    const toggleBtn = this.menuEl.querySelector(`#bili-toggle-${sid}`);
-    if (toggleBtn) {
-      toggleBtn.textContent = this.enabled ? '关闭' : '开启';
-      if (this.enabled) toggleBtn.classList.add('active');
-      else toggleBtn.classList.remove('active');
-    }
 
     // 双语开关与副字幕列禁用态
     const biChk = this.menuEl.querySelector(`#bili-bilingual-chk-${sid}`);
@@ -556,17 +526,11 @@ export class SubtitleEngine {
     if (this.btnEl) {
       if (this.enabled) {
         this.btnEl.classList.add('active');
-        this.btnEl.title = '字幕 (已开启，右键设置)';
+        this.btnEl.title = '实时字幕: 已开启 (右键设置)';
       } else {
         this.btnEl.classList.remove('active');
-        this.btnEl.title = '字幕 (已关闭，右键设置)';
+        this.btnEl.title = '实时字幕: 已关闭 (右键设置)';
       }
-    }
-    const toggleBtn = this.menuEl?.querySelector(`#bili-toggle-${this.slot.slotId}`);
-    if (toggleBtn) {
-      toggleBtn.textContent = this.enabled ? '关闭' : '开启';
-      if (this.enabled) toggleBtn.classList.add('active');
-      else toggleBtn.classList.remove('active');
     }
   }
 

@@ -112,6 +112,15 @@ async function runSubtitleTests() {
   assert.strictEqual(histItem.primary, '', 'Primary history entry must not fall back to Korean text when primaryLang is Chinese');
   assert.strictEqual(histItem.secondary, '안녕하세요', 'Secondary history entry retains Korean text');
 
+  console.log('[Test 7] Unified UI operation: subtitle click toggle & removed redundant settings switch');
+  const fs = await import('fs');
+  const subEngineCode = fs.readFileSync('player/subtitle-engine.js', 'utf8');
+  assert(!subEngineCode.includes('bili-toggle'), 'bili-toggle switch button must be removed from settings menu');
+  assert(subEngineCode.includes('this.toggle()'), 'Subtitle button left-click must toggle subtitle on/off');
+  assert(subEngineCode.includes('toggleSettingsMenu'), 'Subtitle button right-click must open settings menu');
+  assert(!subEngineCode.includes("this.btnEl.addEventListener('mouseenter'"), 'Hover timer must be removed to avoid accidental popups');
+  console.log('  Pass: Subtitle click toggle & right-click settings verified.');
+
   console.log('\nAll subtitle tests passed successfully.');
 }
 
