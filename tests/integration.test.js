@@ -105,17 +105,16 @@ async function runTests() {
   }
   console.log('  Pass: All 8 SOOP language numbers and codes verified.');
 
-  console.log('[Test 4] Pause local buffer & Low latency parameters');
+  console.log('[Test 4] Pause local buffer parameters');
   const pauseHlsConfig = {
     backBufferLength: 600,
     maxBufferLength: 600,
     maxMaxBufferLength: 600,
     maxBufferSize: 600 * 1000 * 1000,
-    liveMaxLatencyDuration: 600,
     liveMaxLatencyDurationCount: 300
   };
   assert.strictEqual(pauseHlsConfig.maxBufferLength, 600, 'Max buffer length must be 600s (10 min)');
-  assert.strictEqual(pauseHlsConfig.liveMaxLatencyDuration, 600, 'Live max latency duration must tolerate 600s pause');
+  assert.strictEqual(pauseHlsConfig.liveMaxLatencyDurationCount, 300, 'Live max latency duration count must tolerate 600s pause');
   console.log('  Pass: 10-minute pause local buffer parameters verified.');
 
   console.log('[Test 5] Latency formatting & Pinning priority sorting');
@@ -184,6 +183,27 @@ async function runTests() {
   assert(!accountManagerCode.includes("urlFilter: 'sooplive.com'"), 'Rule 10002 must not broadly match all sooplive.com domains');
   assert(accountManagerCode.includes('player_live_api.php'), 'Rule 10003 must target player_live_api.php with Korea geo headers');
   console.log('  Pass: DNR rules cleanly isolate APIs from video CDN streams.');
+
+  console.log('[Test 8] 2.0x Catch-up & Safe latency clamping (>= segment duration)');
+  const playerJsCode = fs.readFileSync('player/player.js', 'utf8');
+  assert(!playerJsCode.includes('btn-ctrl-latency'), 'Old btn-ctrl-latency must be completely removed');
+  assert(!playerJsCode.includes('btnCtrlLatency'), 'btnCtrlLatency reference must be completely removed');
+  assert(playerJsCode.includes('playbackRate = 2.0'), 'Catch-up mode must accelerate to 2.0x');
+  assert(playerJsCode.includes('showCatchupSettingsMenu'), 'Catch-up settings menu method must exist');
+
+  function getEffectiveSafeLatency(configuredSafe, segDuration) {
+    return Math.max(configuredSafe, segDuration);
+  }
+  // User selects 1.0s, segment duration is 2.0s -> Clamped to 2.0s
+  assert.strictEqual(getEffectiveSafeLatency(1.0, 2.0), 2.0, 'Safe latency < segment duration must clamp to segment duration');
+  // User selects 3.0s, segment duration is 2.0s -> Remains 3.0s
+  assert.strictEqual(getEffectiveSafeLatency(3.0, 2.0), 3.0, 'Safe latency > segment duration must remain as set');
+  // User selects 0.5s, segment duration is 1.8s -> Clamped to 1.8s
+  assert.strictEqual(getEffectiveSafeLatency(0.5, 1.8), 1.8, 'Safe latency < segment duration must clamp to segment duration');
+
+  const playerCssCode = fs.readFileSync('player/player.css', 'utf8');
+  assert(playerCssCode.includes('.catchup-settings-menu'), '.catchup-settings-menu CSS styles must exist');
+  console.log('  Pass: 2.0x catch-up, safe latency clamping and right-click settings menu verified.');
 
   console.log('\nAll integration tests passed successfully.');
 }

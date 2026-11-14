@@ -31,15 +31,21 @@ class StreamSlot {
     this.recordingTimer = null;
     this.recordingSeconds = 0;
 
-    // 时钟、时差模式与追帧状态
+    // 时钟、时光机与 2.0x 追帧设置
     this.syncTimer = null;
     this.streamStartTime = 0;
     this.isCatchReplayMode = false;
     this.replayManifestUrl = null;
     this.replayTotalDuration = 0;
-    this.isLowLatencyMode = initialData?.lowLatencyMode !== undefined ? Boolean(initialData.lowLatencyMode) : true;
     this.isUserPaused = false;
     this.wasPausedResume = false;
+    this.isCatchingUp = false;
+    this.catchupCheckerTimer = null;
+    const savedSafeLatency = parseFloat(localStorage.getItem('krstream_safe_catchup_latency') || '2.0');
+    this.safeCatchupDistance = initialData?.safeCatchupDistance !== undefined 
+      ? parseFloat(initialData.safeCatchupDistance) 
+      : (!isNaN(savedSafeLatency) && savedSafeLatency > 0 ? savedSafeLatency : 2.0);
+    this.catchupMenu = null;
 
     this.renderDom();
     this.subtitleEngine = new SubtitleEngine(this);
@@ -148,7 +154,7 @@ class StreamSlot {
                   <polygon points="38 7 32 17 38 17 36 27 44 14 38 14" fill="#10b981"/>
                 </svg>
               </div>
-              <div class="panel-caption">右键字幕双语翻译<br>右键弹幕调样式与追帧</div>
+              <div class="panel-caption">右键字幕双语翻译<br>右键追帧设安全延迟</div>
             </div>
           </div>
           <div class="comic-action">
@@ -170,14 +176,8 @@ class StreamSlot {
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
 
-          <!-- 缩短时差 (极速低延迟模式开关) -->
-          <button class="ctrl-icon-btn btn-ctrl-latency ${this.isLowLatencyMode ? 'active' : ''}" id="btn-ctrl-latency-${this.slotId}" title="缩短时差模式 (开启: 保持 1.5s~2s 极低延迟与弹幕同频; 关闭: 正常深度缓冲)">
-            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-            <span class="ctrl-btn-tag" id="ctrl-latency-tag-${this.slotId}">${this.isLowLatencyMode ? '缩短时差' : '正常模式'}</span>
-          </button>
-
-          <!-- 一键追帧 (微加速对齐至实时最新边缘) -->
-          <button class="ctrl-icon-btn btn-ctrl-catchup" id="btn-ctrl-catchup-${this.slotId}" title="一键追帧至实时边缘 (微加速对齐)">
+          <!-- 一键追帧 (2.0x 极速追帧至实时边缘，右键设置安全延迟) -->
+          <button class="ctrl-icon-btn btn-ctrl-catchup" id="btn-ctrl-catchup-${this.slotId}" title="2.0x 极速追帧至实时边缘 (右键设置安全延迟距离)">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             <span class="ctrl-btn-tag" id="ctrl-catchup-tag-${this.slotId}">追帧</span>
           </button>
@@ -253,8 +253,6 @@ class StreamSlot {
     this.replayBar = slotEl.querySelector(`#replay-bar-${this.slotId}`);
     this.replaySlider = slotEl.querySelector(`#replay-slider-${this.slotId}`);
     this.replayTime = slotEl.querySelector(`#replay-time-${this.slotId}`);
-    this.btnCtrlLatency = slotEl.querySelector(`#btn-ctrl-latency-${this.slotId}`);
-    this.ctrlLatencyTag = slotEl.querySelector(`#ctrl-latency-tag-${this.slotId}`);
     this.btnCtrlCatchup = slotEl.querySelector(`#btn-ctrl-catchup-${this.slotId}`);
     this.ctrlCatchupTag = slotEl.querySelector(`#ctrl-catchup-tag-${this.slotId}`);
     this.btnCtrlReplay = slotEl.querySelector(`#btn-ctrl-replay-${this.slotId}`);
@@ -338,32 +336,38 @@ class StreamSlot {
       }
     });
 
-    // 缩短时差开关 (极速低延迟模式切换)
-    if (this.btnCtrlLatency) {
-      this.btnCtrlLatency.addEventListener('click', () => {
-        this.toggleLowLatencyMode();
-      });
-    }
-
-    // 点击延迟标签也可快速触发对齐或切换
+    // 点击延迟标签开启 2.0x 追帧，右键设置安全延迟距离
     if (this.tagLatency) {
       this.tagLatency.style.cursor = 'pointer';
-      this.tagLatency.setAttribute('title', '点击切换【缩短时差】模式 / 立即对齐实时边缘');
+      this.tagLatency.setAttribute('title', '点击开启 2.0x 追帧 / 右键设置安全延迟距离');
       this.tagLatency.addEventListener('click', () => {
-        if (!this.isLowLatencyMode) {
-          this.toggleLowLatencyMode();
-        } else {
-          this.catchUpLiveEdge();
-        }
+        this.toggleCatchUpLiveEdge();
+      });
+      this.tagLatency.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showCatchupSettingsMenu(e.clientX, e.clientY);
       });
     }
 
-    // 一键追帧 (底部工具栏)
+    // 一键追帧 (底部工具栏：点击开启/停止 2.0x 追帧，右键呼出安全延迟距离菜单)
     if (this.btnCtrlCatchup) {
       this.btnCtrlCatchup.addEventListener('click', () => {
-        this.catchUpLiveEdge();
+        this.toggleCatchUpLiveEdge();
+      });
+      this.btnCtrlCatchup.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showCatchupSettingsMenu(e.clientX, e.clientY);
       });
     }
+
+    // 全局点击自动关闭追帧设置菜单
+    document.addEventListener('click', (e) => {
+      if (this.catchupMenu && !this.catchupMenu.contains(e.target) && e.target !== this.btnCtrlCatchup) {
+        this.hideCatchupSettingsMenu();
+      }
+    });
 
     // 实时回看 (时光机) (底部工具栏)
     if (this.btnCtrlReplay) {
@@ -625,10 +629,10 @@ class StreamSlot {
     this.isCatchReplayMode = false;
     this.replayBar.classList.remove('active');
 
-    if (streamData.lowLatencyMode !== undefined) {
-      this.isLowLatencyMode = Boolean(streamData.lowLatencyMode);
+    if (streamData.safeCatchupDistance !== undefined) {
+      this.safeCatchupDistance = parseFloat(streamData.safeCatchupDistance) || 2.0;
     }
-    this.updateLowLatencyUI();
+    this.stopCatchUp();
 
     // 针对 SOOP 与 CHZZK 均支持实时回放/时光机
     const isReplaySupported = (platform === 'soop' || platform === 'chzzk');
@@ -737,11 +741,11 @@ class StreamSlot {
         enableWorker: true,
         lowLatencyMode: !isReplay,
         backBufferLength: 600, // 本地保留 10 分钟 (600秒) 历史缓存
-        maxBufferLength: isReplay ? 60 : (this.isLowLatencyMode ? 10 : 30),
+        maxBufferLength: isReplay ? 60 : 30,
         maxMaxBufferLength: 600, // 暂停时支持扩展至 600 秒
         maxBufferSize: 60 * 1000 * 1000,
-        liveSyncDurationCount: this.isLowLatencyMode ? 1.5 : 3.0,
-        liveMaxLatencyDurationCount: this.isLowLatencyMode ? 4.0 : 8.0,
+        liveSyncDurationCount: 3.0,
+        liveMaxLatencyDurationCount: 8.0,
         xhrSetup: function (xhr) {
           xhr.withCredentials = false;
         }
@@ -917,23 +921,24 @@ class StreamSlot {
         this.tagLatency.textContent = `延迟 ${latencyDisplay}`;
       }
 
-      // 3. 动态追帧与延迟管理 (仅在正常播放且非用户暂停时执行)
-      if (this.isLowLatencyMode && this.hls && !this.isCatchReplayMode && !this.video.paused && !this.isUserPaused) {
+      // 3. 动态追帧与延迟管理 (2.0x 极速追帧至安全延迟)
+      if (this.isCatchingUp) {
+        const effectiveSafe = this.getEffectiveSafeLatency();
+        if (latency <= effectiveSafe || this.video.paused || this.isCatchReplayMode) {
+          this.stopCatchUp(`已对齐至安全延迟: ${latency.toFixed(1)}s`);
+        } else if (this.video.playbackRate !== 2.0) {
+          this.video.playbackRate = 2.0;
+        }
+      } else {
         // 超过本地 10 分钟 (600秒) 最大缓冲限制时，才被迫跃进至实时边缘
-        if (latency > 600.0) {
+        if (latency > 600.0 && this.hls && !this.isCatchReplayMode && !this.video.paused && !this.isUserPaused) {
           const livePos = this.getLiveEdgePosition();
           this.video.currentTime = Math.max(0, livePos - 1.5);
           this.video.playbackRate = 1.0;
           this.wasPausedResume = false;
-        } else if (latency > 2.8 && latency <= 15.0 && !this.wasPausedResume) {
-          // 仅在 15 秒以内的轻微网络时差下微加速追平；若是暂停后复播，则不自动微加速以保证原速平滑观看
-          this.video.playbackRate = 1.10;
-        } else if (latency <= 1.8 && this.video.playbackRate !== 1.0) {
+        } else if (this.video && this.video.playbackRate !== 1.0 && !this.isCatchReplayMode) {
           this.video.playbackRate = 1.0;
-          this.wasPausedResume = false;
         }
-      } else if (this.video && this.video.playbackRate !== 1.0 && !this.btnCtrlCatchup?.classList.contains('active')) {
-        this.video.playbackRate = 1.0;
       }
     }, 1000);
   }
@@ -947,83 +952,224 @@ class StreamSlot {
     return `${m}分${s < 10 ? '0' : ''}${s}秒`;
   }
 
-  // 缩短时差 (极速低延迟模式) 切换与状态维护
-  toggleLowLatencyMode() {
-    this.isLowLatencyMode = !this.isLowLatencyMode;
-    this.updateLowLatencyUI();
-    this.applyLowLatencySettings();
-    this.manager.saveState();
-  }
-
-  updateLowLatencyUI() {
-    if (!this.btnCtrlLatency) return;
-    if (this.isLowLatencyMode) {
-      this.btnCtrlLatency.classList.add('active');
-      this.btnCtrlLatency.title = '缩短时差模式: 已开启 (保持 1.5s~2s 极低延迟; 点击切换正常缓冲)';
-      if (this.ctrlLatencyTag) this.ctrlLatencyTag.textContent = '缩短时差';
-    } else {
-      this.btnCtrlLatency.classList.remove('active');
-      this.btnCtrlLatency.title = '缩短时差模式: 已关闭 (正常深度缓冲防卡顿; 点击开启极低延迟)';
-      if (this.ctrlLatencyTag) this.ctrlLatencyTag.textContent = '正常模式';
-    }
-  }
-
-  applyLowLatencySettings() {
-    if (this.isCatchReplayMode) return;
+  // 获取当前直播流单分片长度 (下限保护)
+  getSegmentDuration() {
     if (this.hls) {
-      this.hls.config.backBufferLength = 600;
-      this.hls.config.maxBufferLength = this.isLowLatencyMode ? 10 : 30;
-      this.hls.config.maxMaxBufferLength = 600;
-      this.hls.config.maxBufferSize = 60 * 1000 * 1000;
-      this.hls.config.liveMaxLatencyDurationCount = this.isLowLatencyMode ? 4.0 : 8.0;
-
-      if (this.isLowLatencyMode) {
-        this.hls.config.liveSyncDurationCount = 1.5;
-        // 开启后立即跃进至实时最新边缘
-        const livePos = this.getLiveEdgePosition();
-        if (livePos > 0 && (livePos - this.video.currentTime) > 2.5) {
-          this.video.currentTime = Math.max(0, livePos - 1.5);
+      if (typeof this.hls.targetDuration === 'number' && this.hls.targetDuration > 0) {
+        return this.hls.targetDuration;
+      }
+      const level = this.hls.levels?.[this.hls.currentLevel] || this.hls.levels?.[0];
+      if (level?.details) {
+        if (typeof level.details.targetduration === 'number' && level.details.targetduration > 0) {
+          return level.details.targetduration;
         }
-        this.wasPausedResume = false;
-      } else {
-        this.hls.config.liveSyncDurationCount = 3.0;
-        if (this.video) {
-          this.video.playbackRate = 1.0;
+        if (level.details.fragments && level.details.fragments.length > 0) {
+          const d = level.details.fragments[0].duration;
+          if (typeof d === 'number' && d > 0) {
+            return d;
+          }
         }
       }
     }
+    return 2.0; // 默认分片保底 2.0 秒
   }
 
-  // 一键追帧 (微加速 + 跃进实时边缘)
-  catchUpLiveEdge() {
+  // 计算实际生效的安全延迟距离 (硬性限定不能少于一个分片长度)
+  getEffectiveSafeLatency() {
+    const segDur = this.getSegmentDuration();
+    const configured = typeof this.safeCatchupDistance === 'number' && this.safeCatchupDistance > 0 
+      ? this.safeCatchupDistance 
+      : 2.0;
+    // 限定死不能少于一个分片长度
+    return Math.max(configured, segDur);
+  }
+
+  // 2.0x 极速追帧开关
+  toggleCatchUpLiveEdge() {
+    if (this.isCatchingUp) {
+      this.stopCatchUp('已取消追帧，恢复正常倍速');
+      return;
+    }
+    this.startCatchUp();
+  }
+
+  startCatchUp() {
     if (!this.video || !this.hls) return;
-    const livePos = this.getLiveEdgePosition();
-    const target = Math.max(0, livePos - 0.4);
-    this.video.currentTime = target;
+    if (this.isCatchReplayMode) {
+      this.returnToLive();
+    }
+    if (this.video.paused) {
+      this.video.play().catch(() => {});
+    }
+
+    const curDelay = this.getLiveLatency();
+    const effectiveSafe = this.getEffectiveSafeLatency();
+
+    if (curDelay <= effectiveSafe) {
+      this.showToast(`当前延迟 ${curDelay.toFixed(1)}s 已达到安全下限 (${effectiveSafe.toFixed(1)}s)，无需追帧`);
+      this.stopCatchUp();
+      return;
+    }
+
+    this.isCatchingUp = true;
+    this.video.playbackRate = 2.0;
     this.wasPausedResume = false;
 
-    // 启动 1.15x 微加速直至对齐
-    this.video.playbackRate = 1.15;
     if (this.btnCtrlCatchup) {
       this.btnCtrlCatchup.classList.add('active');
     }
     if (this.ctrlCatchupTag) {
-      this.ctrlCatchupTag.textContent = '追帧中';
+      this.ctrlCatchupTag.textContent = '2.0x 追帧';
     }
+    this.showToast(`开启 2.0x 极速追帧 (目标安全延迟: ${effectiveSafe.toFixed(1)}s)`);
 
-    const checkInterval = setInterval(() => {
-      const curDelay = this.getLiveLatency();
-      if (curDelay <= 1.6 || this.video.paused) {
-        this.video.playbackRate = 1.0;
-        clearInterval(checkInterval);
-        if (this.btnCtrlCatchup) {
-          this.btnCtrlCatchup.classList.remove('active');
-        }
-        if (this.ctrlCatchupTag) {
-          this.ctrlCatchupTag.textContent = '追帧';
+    if (this.catchupCheckerTimer) {
+      clearInterval(this.catchupCheckerTimer);
+    }
+    this.catchupCheckerTimer = setInterval(() => {
+      if (!this.isCatchingUp) {
+        clearInterval(this.catchupCheckerTimer);
+        return;
+      }
+      const delay = this.getLiveLatency();
+      const safeTarget = this.getEffectiveSafeLatency();
+
+      if (delay <= safeTarget || this.video.paused || this.isCatchReplayMode) {
+        clearInterval(this.catchupCheckerTimer);
+        this.stopCatchUp(this.video.paused ? '' : `已完成追帧，对齐至安全延迟: ${delay.toFixed(1)}s`);
+      } else {
+        if (this.video.playbackRate !== 2.0) {
+          this.video.playbackRate = 2.0;
         }
       }
-    }, 500);
+    }, 250);
+  }
+
+  stopCatchUp(toastText = '') {
+    this.isCatchingUp = false;
+    if (this.catchupCheckerTimer) {
+      clearInterval(this.catchupCheckerTimer);
+      this.catchupCheckerTimer = null;
+    }
+    if (this.video) {
+      this.video.playbackRate = 1.0;
+    }
+    if (this.btnCtrlCatchup) {
+      this.btnCtrlCatchup.classList.remove('active');
+    }
+    if (this.ctrlCatchupTag) {
+      this.ctrlCatchupTag.textContent = '追帧';
+    }
+    if (toastText) {
+      this.showToast(toastText);
+    }
+  }
+
+  // 追帧安全延迟设置右键菜单
+  createCatchupSettingsMenu() {
+    let menu = document.getElementById(`catchup-menu-${this.slotId}`);
+    if (!menu) {
+      menu = document.createElement('div');
+      menu.className = 'catchup-settings-menu';
+      menu.id = `catchup-menu-${this.slotId}`;
+      document.body.appendChild(menu);
+    }
+    this.catchupMenu = menu;
+    this.updateCatchupSettingsMenu();
+  }
+
+  updateCatchupSettingsMenu() {
+    if (!this.catchupMenu) return;
+    const segDur = this.getSegmentDuration();
+    const effective = this.getEffectiveSafeLatency();
+    const options = [1.0, 1.5, 2.0, 3.0, 5.0];
+
+    const optsHtml = options.map((sec) => {
+      const isSelected = Math.abs(this.safeCatchupDistance - sec) < 0.05;
+      const isClamped = sec < segDur;
+      const note = isClamped ? `<span style="font-size:9px;opacity:0.75;margin-left:2px;">(保底${segDur.toFixed(1)}s)</span>` : '';
+      return `
+        <button class="sub-opt-btn ${isSelected ? 'active' : ''}" data-sec="${sec}">
+          ${sec.toFixed(1)}s${note}
+        </button>
+      `;
+    }).join('');
+
+    this.catchupMenu.innerHTML = `
+      <div class="sub-menu-header">
+        <span class="sub-menu-title">追帧安全延迟设置</span>
+        <span class="sub-menu-status">分片: ${segDur.toFixed(1)}s</span>
+      </div>
+      <div class="catchup-menu-notice">
+        硬性保护：停止阈值不得低于单分片时长 (${segDur.toFixed(1)}s)，低于此值将自动以分片长度为准，防止播放卡顿。
+      </div>
+      <div class="sub-menu-group">
+        <label class="sub-group-label">停止追帧的安全延迟距离:</label>
+        <div class="sub-options">
+          ${optsHtml}
+        </div>
+      </div>
+      <div class="sub-menu-tip">
+        当前设定: ${this.safeCatchupDistance.toFixed(1)}s (实际生效停止阈值: ${effective.toFixed(1)}s)
+      </div>
+    `;
+
+    this.catchupMenu.querySelectorAll('.sub-opt-btn').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const sec = parseFloat(btn.getAttribute('data-sec'));
+        this.setSafeCatchupDistance(sec);
+      });
+    });
+  }
+
+  setSafeCatchupDistance(sec) {
+    this.safeCatchupDistance = sec;
+    try {
+      localStorage.setItem('krstream_safe_catchup_latency', String(sec));
+    } catch (e) {}
+    const eff = this.getEffectiveSafeLatency();
+    this.showToast(`已设置安全延迟: ${sec.toFixed(1)}s (生效下限: ${eff.toFixed(1)}s)`);
+    this.updateCatchupSettingsMenu();
+    this.manager?.saveState?.();
+  }
+
+  showCatchupSettingsMenu(x, y) {
+    if (!this.catchupMenu) {
+      this.createCatchupSettingsMenu();
+    } else {
+      this.updateCatchupSettingsMenu();
+    }
+
+    this.catchupMenu.classList.add('active');
+
+    let left = x;
+    let top = y;
+    if (left === undefined || top === undefined) {
+      const rect = this.btnCtrlCatchup.getBoundingClientRect();
+      left = rect.left;
+      top = rect.top - 180;
+    }
+
+    const menuWidth = 260;
+    const menuHeight = 180;
+    if (left + menuWidth > window.innerWidth - 10) {
+      left = window.innerWidth - menuWidth - 10;
+    }
+    if (left < 10) left = 10;
+    if (top + menuHeight > window.innerHeight - 10) {
+      top = window.innerHeight - menuHeight - 10;
+    }
+    if (top < 10) top = 10;
+
+    this.catchupMenu.style.left = `${left}px`;
+    this.catchupMenu.style.top = `${top}px`;
+  }
+
+  hideCatchupSettingsMenu() {
+    if (this.catchupMenu) {
+      this.catchupMenu.classList.remove('active');
+    }
   }
 
   // 实时回看 (SOOP Catch 归档 / CHZZK 时光机)
@@ -1630,7 +1776,12 @@ class StreamSlot {
       this.subtitleEngine = null;
     }
     if (this.syncTimer) clearInterval(this.syncTimer);
+    if (this.catchupCheckerTimer) clearInterval(this.catchupCheckerTimer);
     if (this.recordingTimer) clearInterval(this.recordingTimer);
+    if (this.catchupMenu && this.catchupMenu.parentNode) {
+      this.catchupMenu.parentNode.removeChild(this.catchupMenu);
+      this.catchupMenu = null;
+    }
     if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
       this.mediaRecorder.stop();
     }
@@ -1729,7 +1880,7 @@ class SlotManager {
         slotsData.push({
           ...slot.currentStreamData,
           selectedCdn: slot.selectedCdn || 'default',
-          lowLatencyMode: slot.isLowLatencyMode !== false
+          safeCatchupDistance: slot.safeCatchupDistance || 2.0
         });
       }
     }
@@ -1891,7 +2042,7 @@ class SlotManager {
         state.push({
           ...slot.currentStreamData,
           selectedCdn: slot.selectedCdn || 'default',
-          lowLatencyMode: slot.isLowLatencyMode !== false,
+          safeCatchupDistance: slot.safeCatchupDistance || 2.0,
           danmakuEnabled: slot.danmakuEngine?.enabled !== false,
           subtitlesEnabled: slot.subtitleEngine?.enabled || false,
           subtitlePrimaryLang: slot.subtitleEngine?.primaryLang || 'zh-CN',
