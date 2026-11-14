@@ -64,6 +64,54 @@ async function runSubtitleTests() {
   assert.strictEqual(sent.length, 1);
   assert(sent[0].includes('0137') && sent[0].includes('\x0c5\x0c'), 'Japanese corresponds to SOOP langNum 5');
 
+  console.log('[Test 4] Korean subtitle strictly excluded from Chinese primary slot');
+  const mockBox = {
+    classList: {
+      _classes: new Set(),
+      add(c) { this._classes.add(c); },
+      remove(c) { this._classes.delete(c); },
+      contains(c) { return this._classes.has(c); }
+    }
+  };
+  const mockSpeaker = { textContent: '', style: {} };
+  const mockMain = { textContent: '', style: {} };
+  const mockSec = { textContent: '', style: {} };
+
+  engine.primaryLang = 'zh-CN';
+  engine.secondaryLang = 'ko';
+  engine.isBilingual = true;
+  engine.overlayEl = {};
+  engine.boxEl = mockBox;
+  engine.speakerEl = mockSpeaker;
+  engine.mainEl = mockMain;
+  engine.secEl = mockSec;
+
+  // When primary text is pending/empty and ko is supplied, mainEl MUST NOT display Korean
+  engine.renderSubtitle('Streamer', { primary: '', ko: '안녕하세요', secondary: '안녕하세요' });
+  assert.strictEqual(mockMain.textContent, '', 'Chinese slot must not be polluted with Korean text');
+  assert.strictEqual(mockSec.textContent, '안녕하세요', 'Korean text must go to secondary slot');
+  assert.strictEqual(mockSec.style.display, 'block', 'Secondary slot should be visible');
+
+  console.log('[Test 5] Bilingual secondary stability (no disappearing/reappearing flicker)');
+  // Primary Chinese arrives while secondary is currently empty in the packet
+  engine.renderSubtitle('Streamer', { primary: '你好朋友', secondary: '' });
+  assert.strictEqual(mockMain.textContent, '你好朋友', 'Chinese slot should update to Chinese text');
+  assert.strictEqual(mockSec.textContent, '안녕하세요', 'Secondary Korean subtitle must persist to prevent flickering/disappearance');
+  assert.strictEqual(mockSec.style.display, 'block', 'Secondary slot must remain visible without blinking');
+
+  console.log('[Test 6] History recording isolation');
+  engine.history = [];
+  engine.addHistoryItem({
+    speaker: 'Streamer',
+    primary: '',
+    secondary: '안녕하세요',
+    ko: '안녕하세요',
+    zh: ''
+  });
+  const histItem = engine.history[0];
+  assert.strictEqual(histItem.primary, '', 'Primary history entry must not fall back to Korean text when primaryLang is Chinese');
+  assert.strictEqual(histItem.secondary, '안녕하세요', 'Secondary history entry retains Korean text');
+
   console.log('\nAll subtitle tests passed successfully.');
 }
 

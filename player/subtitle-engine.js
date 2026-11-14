@@ -53,6 +53,8 @@ export class SubtitleEngine {
     this.recognition = null;
     this.lastSeq = -1;
     this.lastCaptionText = '';
+    this.lastCaptionByLang = new Map();
+    this.lastWsSubtitleTime = 0;
     this.hideTimeout = null;
     this.translationCache = new Map();
     this.history = [];
@@ -636,49 +638,59 @@ export class SubtitleEngine {
     const cleanOriginal = originalText.trim();
     if (!cleanOriginal) return;
 
-    if (this.lastCaptionText === cleanOriginal) return;
+    const matchedLang = getSubtitleLangObj(sourceLang);
+    const langKey = matchedLang ? matchedLang.id : String(sourceLang || 'unknown');
+
+    // 针对每个语种独立去重，避免双信道互相冲刷导致漏判
+    if (this.lastCaptionByLang && this.lastCaptionByLang.get(langKey) === cleanOriginal) {
+      return;
+    }
+    if (!this.lastCaptionByLang) this.lastCaptionByLang = new Map();
+    this.lastCaptionByLang.set(langKey, cleanOriginal);
     this.lastCaptionText = cleanOriginal;
 
-    const matchedLang = getSubtitleLangObj(sourceLang);
     const primaryObj = getSubtitleLangObj(this.primaryLang) || SUBTITLE_LANGS[0];
     const secObj = getSubtitleLangObj(this.secondaryLang) || SUBTITLE_LANGS[1];
 
     let primaryText = '';
     let secText = '';
 
-    // 情况 1: 收到语言为当前主字幕
+    // 情况 1: 收到语言为当前主字幕 (如中文)
     if (matchedLang && matchedLang.id === primaryObj.id) {
       primaryText = cleanOriginal;
       this.recentPrimary = { text: cleanOriginal, time: Date.now() };
 
       if (this.isBilingual) {
-        if (Date.now() - this.recentSecondary.time < 3500 && this.recentSecondary.text) {
+        if (Date.now() - this.recentSecondary.time < 5000 && this.recentSecondary.text) {
           secText = this.recentSecondary.text;
         } else {
-          // 800ms 双语对齐微缓冲：优先等待副字幕翻译就绪后合流同步上屏，避免单行闪烁与历史记录重复
+          // 600ms 双语对齐微缓冲：优先等待副字幕翻译就绪后合流同步上屏
           try {
             const transPromise = this.translate(cleanOriginal, primaryObj.transCode, secObj.transCode);
-            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 800));
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 600));
             secText = await Promise.race([transPromise, timeoutPromise]);
+            // 检查在等待期间次级信道是否已送达真实副字幕
+            if (!secText && this.recentSecondary.text && (Date.now() - this.recentSecondary.time < 5000)) {
+              secText = this.recentSecondary.text;
+            }
             if (secText) {
               this.recentSecondary = { text: secText, time: Date.now() };
             } else {
+              // 翻译超时；若已有近期有效副字幕，保持副字幕避免瞬间消失与闪烁
+              if (this.recentSecondary.text && (Date.now() - this.recentSecondary.time < 5000)) {
+                secText = this.recentSecondary.text;
+              }
               // 超时后异步静默补齐翻译并就地更新，不产生重复历史项
               transPromise.then((trans) => {
                 if (trans && this.isBilingual && this.recentPrimary.text === cleanOriginal) {
-                  this.recentSecondary = { text: trans, time: Date.now() };
-                  this.renderSubtitle(speakerName, { primary: cleanOriginal, secondary: trans });
-                  const lastItem = this.history?.[this.history.length - 1];
-                  if (lastItem && lastItem.primary === cleanOriginal) {
-                    lastItem.secondary = trans;
-                    if (secObj.id === 'ko') lastItem.ko = trans;
-                    if (secObj.id === 'zh-CN') lastItem.zh = trans;
-                    if (typeof window !== 'undefined' && window.dispatchEvent && typeof CustomEvent !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('krstream:subtitle-updated', { detail: { slotId: this.slot.slotId, item: lastItem } }));
-                    }
+                  // 仅在次级信道未送达更新内容时补齐
+                  if (!this.recentSecondary.text || (Date.now() - this.recentSecondary.time > 4000)) {
+                    this.recentSecondary = { text: trans, time: Date.now() };
+                    this.renderSubtitle(speakerName, { primary: cleanOriginal, secondary: trans });
+                    this.updateLastHistorySecondary(cleanOriginal, trans, secObj.id);
                   }
                 }
-              });
+              }).catch(() => {});
             }
           } catch (e) {}
         }
@@ -690,33 +702,36 @@ export class SubtitleEngine {
       this.recentSecondary = { text: cleanOriginal, time: Date.now() };
 
       if (this.isBilingual) {
-        if (Date.now() - this.recentPrimary.time < 3500 && this.recentPrimary.text) {
+        if (Date.now() - this.recentPrimary.time < 5000 && this.recentPrimary.text) {
           primaryText = this.recentPrimary.text;
         } else {
-          // 800ms 双语对齐微缓冲：优先等待主字幕翻译合流
+          // 600ms 双语对齐微缓冲：优先等待主字幕翻译合流
           try {
             const transPromise = this.translate(cleanOriginal, secObj.transCode, primaryObj.transCode);
-            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 800));
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 600));
             primaryText = await Promise.race([transPromise, timeoutPromise]);
+            // 检查在等待期间主信道是否已送达真实主字幕
+            if (!primaryText && this.recentPrimary.text && (Date.now() - this.recentPrimary.time < 5000)) {
+              primaryText = this.recentPrimary.text;
+            }
             if (primaryText) {
               this.recentPrimary = { text: primaryText, time: Date.now() };
             } else {
+              // 翻译超时；若已有近期有效主字幕，保持已有主字幕，绝不降级至韩语
+              if (this.recentPrimary.text && (Date.now() - this.recentPrimary.time < 5000)) {
+                primaryText = this.recentPrimary.text;
+              }
               // 超时后异步静默补齐翻译并就地更新，不产生重复历史项
               transPromise.then((trans) => {
                 if (trans && this.isBilingual && this.recentSecondary.text === cleanOriginal) {
-                  this.recentPrimary = { text: trans, time: Date.now() };
-                  this.renderSubtitle(speakerName, { primary: trans, secondary: cleanOriginal });
-                  const lastItem = this.history?.[this.history.length - 1];
-                  if (lastItem && lastItem.secondary === cleanOriginal) {
-                    lastItem.primary = trans;
-                    if (primaryObj.id === 'zh-CN') lastItem.zh = trans;
-                    if (primaryObj.id === 'ko') lastItem.ko = trans;
-                    if (typeof window !== 'undefined' && window.dispatchEvent && typeof CustomEvent !== 'undefined') {
-                      window.dispatchEvent(new CustomEvent('krstream:subtitle-updated', { detail: { slotId: this.slot.slotId, item: lastItem } }));
-                    }
+                  // 仅在主信道未送达更新内容时补齐
+                  if (!this.recentPrimary.text || (Date.now() - this.recentPrimary.time > 4000)) {
+                    this.recentPrimary = { text: trans, time: Date.now() };
+                    this.renderSubtitle(speakerName, { primary: trans, secondary: cleanOriginal });
+                    this.updateLastHistoryPrimary(cleanOriginal, trans, primaryObj.id);
                   }
                 }
-              });
+              }).catch(() => {});
             }
           } catch (e) {}
         }
@@ -737,7 +752,7 @@ export class SubtitleEngine {
       primary: primaryText,
       secondary: this.isBilingual ? secText : '',
       ko: primaryObj.id === 'ko' ? primaryText : (secObj.id === 'ko' ? secText : ''),
-      zh: primaryObj.id === 'zh-CN' ? primaryText : (secObj.id === 'zh-CN' ? secText : ''),
+      zh: (primaryObj.id.startsWith('zh')) ? primaryText : ((secObj.id.startsWith('zh')) ? secText : ''),
       en: primaryObj.id === 'en' ? primaryText : (secObj.id === 'en' ? secText : '')
     });
 
@@ -746,9 +761,33 @@ export class SubtitleEngine {
       primary: primaryText,
       secondary: this.isBilingual ? secText : '',
       ko: primaryObj.id === 'ko' ? primaryText : (secObj.id === 'ko' ? secText : ''),
-      zh: primaryObj.id === 'zh-CN' ? primaryText : (secObj.id === 'zh-CN' ? secText : ''),
+      zh: (primaryObj.id.startsWith('zh')) ? primaryText : ((secObj.id.startsWith('zh')) ? secText : ''),
       en: primaryObj.id === 'en' ? primaryText : (secObj.id === 'en' ? secText : '')
     });
+  }
+
+  updateLastHistorySecondary(primaryMatch, trans, secLangId) {
+    const lastItem = this.history?.[this.history.length - 1];
+    if (lastItem && lastItem.primary === primaryMatch) {
+      lastItem.secondary = trans;
+      if (secLangId === 'ko') lastItem.ko = trans;
+      if (secLangId.startsWith('zh')) lastItem.zh = trans;
+      if (typeof window !== 'undefined' && window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('krstream:subtitle-updated', { detail: { slotId: this.slot.slotId, item: lastItem } }));
+      }
+    }
+  }
+
+  updateLastHistoryPrimary(secMatch, trans, primaryLangId) {
+    const lastItem = this.history?.[this.history.length - 1];
+    if (lastItem && lastItem.secondary === secMatch) {
+      lastItem.primary = trans;
+      if (primaryLangId.startsWith('zh')) lastItem.zh = trans;
+      if (primaryLangId === 'ko') lastItem.ko = trans;
+      if (typeof window !== 'undefined' && window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('krstream:subtitle-updated', { detail: { slotId: this.slot.slotId, item: lastItem } }));
+      }
+    }
   }
 
   addHistoryItem(item) {
@@ -789,8 +828,8 @@ export class SubtitleEngine {
       id: `sub_${this.slot.slotId}_${now}_${Math.random().toString(36).slice(2, 7)}`,
       slotId: this.slot.slotId,
       speaker: item.speaker,
-      primary: item.primary || item.zh || item.ko || '',
-      secondary: item.secondary || (this.isBilingual ? item.ko : ''),
+      primary: item.primary || (this.primaryLang === 'ko' ? item.ko : (this.primaryLang.startsWith('zh') ? item.zh : (item.en || ''))),
+      secondary: item.secondary || (this.isBilingual ? (this.secondaryLang === 'ko' ? item.ko : (this.secondaryLang.startsWith('zh') ? item.zh : '')) : ''),
       ko: item.ko || '',
       zh: item.zh || '',
       en: item.en || '',
@@ -869,21 +908,32 @@ export class SubtitleEngine {
             let secText = (captions[secObj.id] || captions[secObj.transCode] || captions[secObj.soopCode] || '').trim();
 
             if (!primaryText && rawKorean) {
-              primaryText = await this.translate(rawKorean, 'ko', primaryObj.transCode);
+              if (primaryObj.id === 'ko') {
+                primaryText = rawKorean;
+              } else {
+                primaryText = await this.translate(rawKorean, 'ko', primaryObj.transCode);
+              }
             }
             if (this.isBilingual && !secText && rawKorean) {
-              secText = await this.translate(rawKorean, 'ko', secObj.transCode);
+              if (secObj.id === 'ko') {
+                secText = rawKorean;
+              } else {
+                secText = await this.translate(rawKorean, 'ko', secObj.transCode);
+              }
             }
 
             if (!primaryText && !secText && !rawKorean) continue;
 
-            this.renderSubtitle(speaker, { primary: primaryText || rawKorean, secondary: this.isBilingual ? secText : '' });
+            const finalPrimary = primaryText || (primaryObj.id === 'ko' ? rawKorean : '');
+            const finalSecondary = this.isBilingual ? (secText || (secObj.id === 'ko' ? rawKorean : '')) : '';
+
+            this.renderSubtitle(speaker, { primary: finalPrimary, secondary: finalSecondary });
             this.addHistoryItem({
               speaker,
-              primary: primaryText || rawKorean,
-              secondary: this.isBilingual ? secText : '',
-              ko: rawKorean,
-              zh: primaryObj.id === 'zh-CN' ? primaryText : (secObj.id === 'zh-CN' ? secText : '')
+              primary: finalPrimary,
+              secondary: finalSecondary,
+              ko: rawKorean || (primaryObj.id === 'ko' ? finalPrimary : (secObj.id === 'ko' ? finalSecondary : '')),
+              zh: primaryObj.id.startsWith('zh') ? finalPrimary : (secObj.id.startsWith('zh') ? finalSecondary : '')
             });
           }
         }
@@ -952,6 +1002,9 @@ export class SubtitleEngine {
     // 3. 辅助链路：官方 translate-api (Timeshift)
     const pollSoopCaptions = async () => {
       if (!this.enabled || !bno) return;
+      // 若 WebSocket 实时字幕信道正在稳定接收数据，跳过 HTTP 轮询避免冲突与闪烁
+      if (this.lastWsSubtitleTime && (Date.now() - this.lastWsSubtitleTime < 8000)) return;
+
       try {
         const primaryObj = getSubtitleLangObj(this.primaryLang) || SUBTITLE_LANGS[0];
         const secObj = getSubtitleLangObj(this.secondaryLang) || SUBTITLE_LANGS[1];
@@ -979,27 +1032,26 @@ export class SubtitleEngine {
 
           if (pList.length > 0 || sList.length > 0) {
             apiSuccess = true;
-            const targetList = pList.length > 0 ? pList : sList;
-
             if (lastTime === 0) {
-              const latest = targetList[targetList.length - 1];
-              lastTime = latest.time;
-              const matchingSec = sList.find(s => Math.abs(s.time - latest.time) < 2500)?.msg || '';
-              const matchingP = pList.find(p => Math.abs(p.time - latest.time) < 2500)?.msg || '';
-              this.renderSubtitle(speakerName, {
-                primary: matchingP || latest.msg,
-                secondary: matchingSec || ''
-              });
+              const latestP = pList[pList.length - 1];
+              const latestS = sList[sList.length - 1];
+              lastTime = Math.max(latestP?.time || 0, latestS?.time || 0);
+              if (latestS?.msg) {
+                this.handleSubtitleReceived(latestS.msg, secObj.id, speakerName);
+              }
+              if (latestP?.msg) {
+                this.handleSubtitleReceived(latestP.msg, primaryObj.id, speakerName);
+              }
             } else {
-              const newItems = targetList.filter(item => item.time > lastTime);
-              for (const item of newItems) {
+              const newS = sList.filter(item => item.time > lastTime);
+              const newP = pList.filter(item => item.time > lastTime);
+              for (const item of newS) {
                 lastTime = Math.max(lastTime, item.time);
-                const matchingSec = sList.find(s => Math.abs(s.time - item.time) < 2500)?.msg || '';
-                const matchingP = pList.find(p => Math.abs(p.time - item.time) < 2500)?.msg || '';
-                this.renderSubtitle(speakerName, {
-                  primary: matchingP || item.msg,
-                  secondary: matchingSec || ''
-                });
+                this.handleSubtitleReceived(item.msg, secObj.id, speakerName);
+              }
+              for (const item of newP) {
+                lastTime = Math.max(lastTime, item.time);
+                this.handleSubtitleReceived(item.msg, primaryObj.id, speakerName);
               }
             }
           }
@@ -1015,12 +1067,12 @@ export class SubtitleEngine {
               if (lastTime === 0) {
                 const latest = list[list.length - 1];
                 lastTime = latest.time;
-                this.renderSubtitle(speakerName, { primary: latest.msg });
+                this.handleSubtitleReceived(latest.msg, primaryObj.id, speakerName);
               } else {
                 const newItems = list.filter(item => item.time > lastTime);
                 for (const item of newItems) {
                   lastTime = Math.max(lastTime, item.time);
-                  this.renderSubtitle(speakerName, { primary: item.msg });
+                  this.handleSubtitleReceived(item.msg, primaryObj.id, speakerName);
                 }
               }
             }
@@ -1050,19 +1102,68 @@ export class SubtitleEngine {
       this.speakerEl.style.display = 'none';
     }
 
-    const mainText = content.primary || content.zh || content.ko || content.en || '';
-    const secText = this.isBilingual ? (content.secondary || (content.primary !== content.ko ? content.ko : '')) : '';
+    const isPrimaryKo = this.primaryLang === 'ko';
+    const isPrimaryZh = this.primaryLang.startsWith('zh');
+    const isPrimaryEn = this.primaryLang === 'en';
 
-    this.mainEl.textContent = mainText;
-    if (secText && this.isBilingual) {
-      this.secEl.textContent = secText;
-      this.secEl.style.display = 'block';
+    // 主字幕确定：严格对应 primaryLang，绝不在主语言为非韩语时回退到韩语
+    let mainText = content.primary || '';
+    if (!mainText) {
+      if (isPrimaryZh) {
+        mainText = content.zh || '';
+      } else if (isPrimaryKo) {
+        mainText = content.ko || '';
+      } else if (isPrimaryEn) {
+        mainText = content.en || '';
+      } else {
+        mainText = content[this.primaryLang] || '';
+      }
+    }
+
+    // 副字幕确定
+    let secText = '';
+    if (this.isBilingual) {
+      secText = content.secondary || '';
+      if (!secText) {
+        if (this.secondaryLang === 'ko') {
+          secText = content.ko || '';
+        } else if (this.secondaryLang.startsWith('zh')) {
+          secText = content.zh || '';
+        } else if (this.secondaryLang === 'en') {
+          secText = content.en || '';
+        } else {
+          secText = content[this.secondaryLang] || '';
+        }
+      }
+    }
+
+    // 渲染主字幕：若待翻译且有前置有效主字幕，保持现有主字幕，绝不显示韩语
+    if (mainText) {
+      this.recentPrimary = { text: mainText, time: Date.now() };
+      this.mainEl.textContent = mainText;
+    } else if (!this.mainEl.textContent && this.recentPrimary.text && (Date.now() - this.recentPrimary.time < 5000)) {
+      this.mainEl.textContent = this.recentPrimary.text;
+    }
+
+    // 渲染副字幕：处理双语对齐，平滑保持已有副字幕，消除瞬间隐藏与闪烁
+    if (this.isBilingual) {
+      if (secText) {
+        this.recentSecondary = { text: secText, time: Date.now() };
+        this.secEl.textContent = secText;
+        this.secEl.style.display = 'block';
+      } else if (this.secEl.textContent && (Date.now() - this.recentSecondary.time < 5000)) {
+        this.secEl.style.display = 'block';
+      } else {
+        this.secEl.textContent = '';
+        this.secEl.style.display = 'none';
+      }
     } else {
       this.secEl.textContent = '';
       this.secEl.style.display = 'none';
     }
 
-    if (mainText || secText) {
+    const hasVisibleContent = Boolean(this.mainEl.textContent || (this.isBilingual && this.secEl.textContent));
+    if (hasVisibleContent) {
       this.boxEl.classList.add('visible');
       if (this.hideTimeout) clearTimeout(this.hideTimeout);
       this.hideTimeout = setTimeout(() => {

@@ -478,9 +478,14 @@ export class DanmakuEngine {
             }
             if (subText && typeof subText === 'string') {
               console.log(`[KRStream] 窗口 #${this.slot.slotId} 收到 SOOP 官方实时字幕 [${lang}]: ${subText}`);
-              this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), lang, streamData.streamer || channelId);
+              if (this.slot.subtitleEngine) {
+                this.slot.subtitleEngine.lastWsSubtitleTime = Date.now();
+                this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), lang, streamData.streamer || channelId);
+              }
             }
+            return;
           }
+          return;
         }
 
         // GreasyFork 591429 字幕流协议兼容检查
@@ -602,7 +607,10 @@ export class DanmakuEngine {
               subText = cleanParts[0];
             }
             if (subText && typeof subText === 'string') {
-              this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), String(langNum), data.streamer || channelId);
+              if (this.slot.subtitleEngine) {
+                this.slot.subtitleEngine.lastWsSubtitleTime = Date.now();
+                this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), String(langNum), data.streamer || channelId);
+              }
             }
           }
         }
