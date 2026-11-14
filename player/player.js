@@ -47,6 +47,9 @@ class StreamSlot {
       : (!isNaN(savedSafeLatency) && savedSafeLatency > 0 ? savedSafeLatency : 2.0);
     this.catchupMenu = null;
     this.hasInitialLiveSynced = false;
+    this.networkRetryCount = 0;
+    this.maxNetworkRetries = 4;
+    this.networkRetryTimer = null;
 
     this.renderDom();
     this.subtitleEngine = new SubtitleEngine(this);
@@ -648,6 +651,8 @@ class StreamSlot {
     this.labelStreamer.textContent = streamer || channelId || '未知主播';
     this.isCatchReplayMode = false;
     this.hasInitialLiveSynced = false;
+    this.networkRetryCount = 0;
+    if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
     this.replayBar.classList.remove('active');
 
     if (streamData.safeCatchupDistance !== undefined) {
@@ -823,21 +828,48 @@ class StreamSlot {
         }
       });
 
+      this.hls.on(Hls.Events.FRAG_LOADED, () => {
+        // 分片正常传输，清空网络异常自愈计数
+        this.networkRetryCount = 0;
+      });
+
       this.hls.on(Hls.Events.ERROR, (event, data) => {
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
-              console.warn(`[KRStream] 窗口 #${this.slotId} 网络中断，尝试自愈重连...`, data);
-              this.hls.startLoad();
+              if (this.networkRetryCount < this.maxNetworkRetries) {
+                this.networkRetryCount++;
+                // 跨国弱网指数退避重试 (1.5s, 2.7s, 4.8s, 8.0s)
+                const delayMs = Math.min(8000, Math.round(1500 * Math.pow(1.8, this.networkRetryCount - 1)));
+                console.warn(`[KRStream] 窗口 #${this.slotId} 网络波动，第 ${this.networkRetryCount}/${this.maxNetworkRetries} 次自愈重连中 (${delayMs}ms)...`, data);
+                this.showToast(`网络抖动，正在自愈重连 (${this.networkRetryCount}/${this.maxNetworkRetries})...`, delayMs);
+                if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
+                this.networkRetryTimer = setTimeout(() => {
+                  if (this.hls) this.hls.startLoad();
+                }, delayMs);
+              } else {
+                this.showLoading('网络连接超时，请点击右上角刷新重连');
+                this.showToast('连续重连超时，已暂停重试，可点击刷新重试');
+              }
               break;
             case Hls.ErrorTypes.MEDIA_ERROR:
-              console.warn(`[KRStream] 窗口 #${this.slotId} 解码错误，执行恢复...`, data);
+              console.warn(`[KRStream] 窗口 #${this.slotId} 解码错误，执行自愈恢复...`, data);
               this.hls.recoverMediaError();
               break;
             default:
               this.showLoading('直播流连接中断或未响应');
               this.hls.destroy();
               break;
+          }
+        } else if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+          // 非致命缓冲卡顿 (网络抖动造成解码滞后): 若停滞，尝试微调微前移消除 MSE 卡死
+          if (this.video && !this.video.paused && !this.isUserPaused && !this.isCatchReplayMode) {
+            const livePos = this.hls?.liveSyncPosition;
+            if (typeof livePos === 'number' && livePos > 0 && Math.abs(livePos - this.video.currentTime) > 5.0) {
+              this.video.currentTime = livePos;
+            } else if (this.video.currentTime > 0) {
+              this.video.currentTime += 0.05;
+            }
           }
         }
       });
@@ -1282,6 +1314,8 @@ class StreamSlot {
   returnToLive() {
     this.isCatchReplayMode = false;
     this.hasInitialLiveSynced = false;
+    this.networkRetryCount = 0;
+    if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
     this.replayBar.classList.remove('active');
 
     const platform = this.currentStreamData?.platform;
@@ -1822,6 +1856,7 @@ class StreamSlot {
     }
     if (this.syncTimer) clearInterval(this.syncTimer);
     if (this.catchupCheckerTimer) clearInterval(this.catchupCheckerTimer);
+    if (this.networkRetryTimer) clearInterval(this.networkRetryTimer);
     if (this.recordingTimer) clearInterval(this.recordingTimer);
     if (this.catchupMenu && this.catchupMenu.parentNode) {
       this.catchupMenu.parentNode.removeChild(this.catchupMenu);

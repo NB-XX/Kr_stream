@@ -29,6 +29,10 @@ export class DanmakuEngine {
     // 弹幕轨道调度 (防止重叠碰撞)
     this.tracks = []; // 记录每个轨道的可用时间戳 (ms)
 
+    // 高并发保护与 DOM 对象池 (防止万人直播间弹幕风暴造成卡顿与内存溢出)
+    this.maxOnScreen = 50; // 同屏弹幕上限，超额平滑丢弃普通弹幕
+    this.domPool = []; // DOM 对象池复用，杜绝频繁 GC 抖动
+
     // DOM 引用
     this.containerEl = null;
     this.btnEl = null;
@@ -862,6 +866,17 @@ export class DanmakuEngine {
     const cleanText = String(text).trim();
     if (!cleanText) return;
 
+    // 0. 高并发超额保护 (优先保留主播发言与醒目弹幕，普通弹幕超额平滑丢弃，保障 60 FPS 流畅度)
+    if (this.containerEl.childElementCount >= this.maxOnScreen) {
+      if (!options.isSpeaker && !options.isHighlight) {
+        return;
+      }
+      const oldest = this.containerEl.querySelector('.danmaku-item:not(.danmaku-speaker)');
+      if (oldest) {
+        this.recycleDanmakuElement(oldest);
+      }
+    }
+
     // 弹幕消息去重 (3 秒滑动窗口，相同发送者和内容只展示一次)
     const hash = `${user}:${cleanText}`;
     const now = Date.now();
@@ -947,9 +962,8 @@ export class DanmakuEngine {
 
     const topPos = bestTrack * trackHeight + 10;
 
-    // 创建弹幕 DOM 节点 (适配 Document PiP 悬浮窗上下文)
-    const ownerDoc = this.containerEl?.ownerDocument || document;
-    const danmakuEl = ownerDoc.createElement('div');
+    // 从对象池获取或创建弹幕 DOM 节点 (适配 Document PiP 悬浮窗上下文)
+    const danmakuEl = this.getDanmakuElement();
     danmakuEl.className = 'danmaku-item';
     if (options.isSpeaker) {
       danmakuEl.classList.add('danmaku-speaker');
@@ -963,25 +977,52 @@ export class DanmakuEngine {
     danmakuEl.innerHTML = renderedHtml;
 
     // 支持在飞行弹幕上右键直接呼出样式调节面板
-    danmakuEl.addEventListener('contextmenu', (e) => {
+    danmakuEl.oncontextmenu = (e) => {
       e.preventDefault();
       e.stopPropagation();
       this.showSettingsMenu(e.clientX, e.clientY);
-    });
+    };
 
     this.containerEl.appendChild(danmakuEl);
 
-    // 动画结束后自动销毁回收，防止 DOM 膨胀
+    // 动画结束后归还至对象池复用，杜绝 DOM 膨胀与 GC 暂停
     danmakuEl.addEventListener('animationend', () => {
-      danmakuEl.remove();
+      this.recycleDanmakuElement(danmakuEl);
     }, { once: true });
 
     // 兜底超时清理
     setTimeout(() => {
       if (danmakuEl.parentNode) {
-        danmakuEl.remove();
+        this.recycleDanmakuElement(danmakuEl);
       }
     }, (this.speed + 1) * 1000);
+  }
+
+  // DOM 对象池：获取可用节点
+  getDanmakuElement() {
+    const ownerDoc = this.containerEl?.ownerDocument || document;
+    if (this.domPool.length > 0) {
+      const el = this.domPool.pop();
+      el.className = 'danmaku-item';
+      el.style.cssText = '';
+      return el;
+    }
+    return ownerDoc.createElement('div');
+  }
+
+  // DOM 对象池：回收节点并重置状态
+  recycleDanmakuElement(el) {
+    if (!el) return;
+    if (el.parentNode) {
+      el.remove();
+    }
+    el.oncontextmenu = null;
+    el.innerHTML = '';
+    el.className = 'danmaku-item';
+    el.style.cssText = '';
+    if (this.domPool.length < 60) {
+      this.domPool.push(el);
+    }
   }
 
   destroy() {
@@ -991,8 +1032,12 @@ export class DanmakuEngine {
       this.menuEl = null;
     }
     if (this.containerEl) {
+      while (this.containerEl.firstChild) {
+        this.containerEl.removeChild(this.containerEl.firstChild);
+      }
       this.containerEl.remove();
       this.containerEl = null;
     }
+    this.domPool = [];
   }
 }

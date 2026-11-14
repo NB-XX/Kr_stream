@@ -652,49 +652,73 @@ export class SubtitleEngine {
       this.recentPrimary = { text: cleanOriginal, time: Date.now() };
 
       if (this.isBilingual) {
-        if (Date.now() - this.recentSecondary.time < 4500 && this.recentSecondary.text) {
+        if (Date.now() - this.recentSecondary.time < 3500 && this.recentSecondary.text) {
           secText = this.recentSecondary.text;
         } else {
-          this.translate(cleanOriginal, primaryObj.transCode, secObj.transCode).then((trans) => {
-            if (trans && this.isBilingual && this.recentPrimary.text === cleanOriginal) {
-              this.recentSecondary = { text: trans, time: Date.now() };
-              this.renderSubtitle(speakerName, { primary: cleanOriginal, secondary: trans });
-              this.addHistoryItem({
-                speaker: speakerName || this.slot.currentStreamData?.streamer || '主播',
-                primary: cleanOriginal,
-                secondary: trans,
-                ko: primaryObj.id === 'ko' ? cleanOriginal : (secObj.id === 'ko' ? trans : ''),
-                zh: primaryObj.id === 'zh-CN' ? cleanOriginal : (secObj.id === 'zh-CN' ? trans : ''),
-                en: primaryObj.id === 'en' ? cleanOriginal : (secObj.id === 'en' ? trans : '')
+          // 800ms 双语对齐微缓冲：优先等待副字幕翻译就绪后合流同步上屏，避免单行闪烁与历史记录重复
+          try {
+            const transPromise = this.translate(cleanOriginal, primaryObj.transCode, secObj.transCode);
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 800));
+            secText = await Promise.race([transPromise, timeoutPromise]);
+            if (secText) {
+              this.recentSecondary = { text: secText, time: Date.now() };
+            } else {
+              // 超时后异步静默补齐翻译并就地更新，不产生重复历史项
+              transPromise.then((trans) => {
+                if (trans && this.isBilingual && this.recentPrimary.text === cleanOriginal) {
+                  this.recentSecondary = { text: trans, time: Date.now() };
+                  this.renderSubtitle(speakerName, { primary: cleanOriginal, secondary: trans });
+                  const lastItem = this.history?.[this.history.length - 1];
+                  if (lastItem && lastItem.primary === cleanOriginal) {
+                    lastItem.secondary = trans;
+                    if (secObj.id === 'ko') lastItem.ko = trans;
+                    if (secObj.id === 'zh-CN') lastItem.zh = trans;
+                    if (typeof window !== 'undefined' && window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('krstream:subtitle-updated', { detail: { slotId: this.slot.slotId, item: lastItem } }));
+                    }
+                  }
+                }
               });
             }
-          });
+          } catch (e) {}
         }
       }
     }
-    // 情况 2: 收到语言为当前副字幕
+    // 情况 2: 收到语言为当前副字幕 (如 SOOP / Chzzk 韩语原文识别)
     else if (matchedLang && matchedLang.id === secObj.id) {
       secText = cleanOriginal;
       this.recentSecondary = { text: cleanOriginal, time: Date.now() };
 
       if (this.isBilingual) {
-        if (Date.now() - this.recentPrimary.time < 4500 && this.recentPrimary.text) {
+        if (Date.now() - this.recentPrimary.time < 3500 && this.recentPrimary.text) {
           primaryText = this.recentPrimary.text;
         } else {
-          this.translate(cleanOriginal, secObj.transCode, primaryObj.transCode).then((trans) => {
-            if (trans && this.recentSecondary.text === cleanOriginal) {
-              this.recentPrimary = { text: trans, time: Date.now() };
-              this.renderSubtitle(speakerName, { primary: trans, secondary: cleanOriginal });
-              this.addHistoryItem({
-                speaker: speakerName || this.slot.currentStreamData?.streamer || '主播',
-                primary: trans,
-                secondary: cleanOriginal,
-                ko: secObj.id === 'ko' ? cleanOriginal : (primaryObj.id === 'ko' ? trans : ''),
-                zh: primaryObj.id === 'zh-CN' ? trans : (secObj.id === 'zh-CN' ? cleanOriginal : ''),
-                en: primaryObj.id === 'en' ? trans : (secObj.id === 'en' ? cleanOriginal : '')
+          // 800ms 双语对齐微缓冲：优先等待主字幕翻译合流
+          try {
+            const transPromise = this.translate(cleanOriginal, secObj.transCode, primaryObj.transCode);
+            const timeoutPromise = new Promise((resolve) => setTimeout(() => resolve(''), 800));
+            primaryText = await Promise.race([transPromise, timeoutPromise]);
+            if (primaryText) {
+              this.recentPrimary = { text: primaryText, time: Date.now() };
+            } else {
+              // 超时后异步静默补齐翻译并就地更新，不产生重复历史项
+              transPromise.then((trans) => {
+                if (trans && this.isBilingual && this.recentSecondary.text === cleanOriginal) {
+                  this.recentPrimary = { text: trans, time: Date.now() };
+                  this.renderSubtitle(speakerName, { primary: trans, secondary: cleanOriginal });
+                  const lastItem = this.history?.[this.history.length - 1];
+                  if (lastItem && lastItem.secondary === cleanOriginal) {
+                    lastItem.primary = trans;
+                    if (primaryObj.id === 'zh-CN') lastItem.zh = trans;
+                    if (primaryObj.id === 'ko') lastItem.ko = trans;
+                    if (typeof window !== 'undefined' && window.dispatchEvent && typeof CustomEvent !== 'undefined') {
+                      window.dispatchEvent(new CustomEvent('krstream:subtitle-updated', { detail: { slotId: this.slot.slotId, item: lastItem } }));
+                    }
+                  }
+                }
               });
             }
-          });
+          } catch (e) {}
         }
       }
     }
