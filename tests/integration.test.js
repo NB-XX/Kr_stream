@@ -205,7 +205,9 @@ async function runTests() {
 
   const playerCssCode = fs.readFileSync('player/player.css', 'utf8');
   assert(playerCssCode.includes('.catchup-settings-menu'), '.catchup-settings-menu CSS styles must exist');
-  console.log('  Pass: 2.0x catch-up, safe latency clamping and right-click settings menu verified.');
+  assert(playerCssCode.includes('.slot-toast'), '.slot-toast CSS styles must exist');
+  assert(playerJsCode.includes('showToast('), 'showToast method must be defined in player.js');
+  console.log('  Pass: 2.0x catch-up, safe latency clamping, right-click settings menu, and in-slot toast verified.');
 
   console.log('\nAll integration tests passed successfully.');
 }

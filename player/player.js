@@ -618,6 +618,25 @@ class StreamSlot {
     if (this.guideComic) this.guideComic.classList.add('hidden');
   }
 
+  showToast(message, durationMs = 2500) {
+    if (!this.dom) return;
+    let toastEl = this.dom.querySelector('.slot-toast');
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.className = 'slot-toast';
+      this.dom.appendChild(toastEl);
+    }
+    toastEl.textContent = message;
+    toastEl.classList.remove('active');
+    void toastEl.offsetWidth; // 触发 reflow 确保动画平滑重启
+    toastEl.classList.add('active');
+
+    if (this.toastTimer) clearTimeout(this.toastTimer);
+    this.toastTimer = setTimeout(() => {
+      toastEl.classList.remove('active');
+    }, durationMs);
+  }
+
   async loadStream(streamData) {
     this.currentStreamData = { ...streamData };
     if (streamData.selectedCdn) {
@@ -964,20 +983,26 @@ class StreamSlot {
   // 获取当前直播流单分片长度 (下限保护)
   getSegmentDuration() {
     if (this.hls) {
-      if (typeof this.hls.targetDuration === 'number' && this.hls.targetDuration > 0) {
-        return this.hls.targetDuration;
-      }
-      const level = this.hls.levels?.[this.hls.currentLevel] || this.hls.levels?.[0];
-      if (level?.details) {
-        if (typeof level.details.targetduration === 'number' && level.details.targetduration > 0) {
-          return level.details.targetduration;
+      const details = this.hls.levels?.[this.hls.currentLevel]?.details || this.hls.levels?.[0]?.details;
+      if (details) {
+        // 1. LL-HLS 存在独立微切片 partTarget (例如 Chzzk LL-HLS 为 1.0s)
+        if (typeof details.partTarget === 'number' && details.partTarget > 0) {
+          return details.partTarget;
         }
-        if (level.details.fragments && level.details.fragments.length > 0) {
-          const d = level.details.fragments[0].duration;
-          if (typeof d === 'number' && d > 0) {
+        // 2. 从真实分片计算物理切片长度 (SOOP 为 2.0s，Chzzk 完整片为 4.16s)
+        if (details.fragments && details.fragments.length > 0) {
+          const d = details.fragments[0].duration;
+          if (typeof d === 'number' && d > 0 && d <= 6.0) {
             return d;
           }
         }
+        // 3. 合理的 targetduration (<= 4.0s，如 SOOP 为 2.0s)
+        if (typeof details.targetduration === 'number' && details.targetduration > 0 && details.targetduration <= 4.0) {
+          return details.targetduration;
+        }
+      }
+      if (typeof this.hls.targetDuration === 'number' && this.hls.targetDuration > 0 && this.hls.targetDuration <= 4.0) {
+        return this.hls.targetDuration;
       }
     }
     return 2.0; // 默认分片保底 2.0 秒
@@ -1013,9 +1038,19 @@ class StreamSlot {
 
     const curDelay = this.getLiveLatency();
     const effectiveSafe = this.getEffectiveSafeLatency();
+    const segDur = this.getSegmentDuration();
 
     if (curDelay <= effectiveSafe) {
-      this.showToast(`当前延迟 ${curDelay.toFixed(1)}s 已达到安全下限 (${effectiveSafe.toFixed(1)}s)，无需追帧`);
+      // 达到安全延迟/最小分片时，给出清晰的按钮文字反馈与 Toast 提示
+      if (this.ctrlCatchupTag) {
+        this.ctrlCatchupTag.textContent = '已是最新';
+        setTimeout(() => {
+          if (!this.isCatchingUp && this.ctrlCatchupTag) {
+            this.ctrlCatchupTag.textContent = '追帧';
+          }
+        }, 1500);
+      }
+      this.showToast(`已对齐实时边缘 (当前延迟 ${curDelay.toFixed(1)}s 已达安全下限 ${effectiveSafe.toFixed(1)}s，单分片保底 ${segDur.toFixed(1)}s)`);
       this.stopCatchUp();
       return;
     }
