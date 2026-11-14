@@ -236,6 +236,19 @@ async function runTests() {
   assert(playerCssCode.includes('.debug-tick'), 'Gauge meter ticks must exist in player.css');
   console.log('  Pass: SOOP playback & quality switching, Chinese Debug Info, and Chzzk start time verified.');
 
+  console.log('[Test 10] SOOP Category Code Mapping (CATE code to Chinese category name)');
+  const { SOOP_CATEGORY_MAP } = await import('../core/soop-categories.js');
+  assert(SOOP_CATEGORY_MAP, 'SOOP_CATEGORY_MAP must be exported');
+  assert.strictEqual(SOOP_CATEGORY_MAP['00810000'], '虚拟', "00810000 must map to '虚拟'");
+  assert.strictEqual(SOOP_CATEGORY_MAP['00040019'], '英雄联盟', "00040019 must map to '英雄联盟'");
+  assert.strictEqual(SOOP_CATEGORY_MAP['00040131'], 'VRChat', "00040131 must map to 'VRChat'");
+  assert.strictEqual(StreamResolver.getSoopCategoryName('00810000'), '虚拟', 'getSoopCategoryName must return 虚拟 for 00810000');
+  assert.strictEqual(StreamResolver.getSoopCategoryName(''), '综合直播', 'getSoopCategoryName must fallback to 综合直播 for empty code');
+  assert.strictEqual(StreamResolver.getSoopCategoryName(null, 'Game'), 'Game', 'getSoopCategoryName must use fallbackTags when code is missing');
+  assert(streamResolverCode.includes('getSoopCategoryName'), 'resolveSoop must use getSoopCategoryName');
+  assert(streamResolverCode.includes('refreshSoopCategories'), 'StreamResolver must support dynamic refreshSoopCategories');
+  console.log('  Pass: SOOP Category Code mapping and dynamic resolution verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

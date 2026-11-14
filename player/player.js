@@ -11,6 +11,7 @@
  */
 
 import { StreamResolver, PLATFORM_CDNS } from '../core/stream-resolver.js';
+import { SOOP_CATEGORY_MAP } from '../core/soop-categories.js';
 import { SubtitleEngine } from './subtitle-engine.js';
 import { DanmakuEngine } from './danmaku-engine.js';
 
@@ -1852,9 +1853,15 @@ class StreamSlot {
     if (elStreamer) elStreamer.textContent = `[${platform}] ${streamer}`;
 
     // 9. Category
-    const category = this.currentStreamData?.category || '综合直播';
+    let category = this.currentStreamData?.category;
+    if (!category || category === 'Live' || category === '综合直播') {
+      const cateNo = this.currentStreamData?.cateNo || this.currentStreamData?.cate;
+      if (cateNo && SOOP_CATEGORY_MAP[cateNo]) {
+        category = SOOP_CATEGORY_MAP[cateNo];
+      }
+    }
     const elCat = this.debugCard.querySelector(`#dbg-category-${this.slotId}`);
-    if (elCat) elCat.textContent = category;
+    if (elCat) elCat.textContent = category || '综合直播';
 
     // 10. Broad Time & Duration
     const elTime = this.debugCard.querySelector(`#dbg-time-${this.slotId}`);

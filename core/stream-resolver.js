@@ -4,6 +4,9 @@
  */
 
 import { AccountManager } from './account-manager.js';
+import { SOOP_CATEGORY_MAP } from './soop-categories.js';
+
+let dynamicSoopCategories = null;
 
 export const PLATFORM_CDNS = {
   soop: [
@@ -60,6 +63,55 @@ export class StreamResolver {
       return streamUrl;
     }
   }
+  /**
+   * 刷新并获取最新的 SOOP 官方中文分类字典 (zh_CN)
+   */
+  static async refreshSoopCategories() {
+    if (dynamicSoopCategories) return dynamicSoopCategories;
+    try {
+      const res = await fetch('https://live.sooplive.com/script/locale/zh_CN/broad_category.js');
+      if (res.ok) {
+        const text = await res.text();
+        const jsonStr = text.replace(/^\s*var\s+szBroadCategory\s*=\s*/, '').replace(/;\s*$/, '');
+        const data = JSON.parse(jsonStr);
+        const list = data?.CHANNEL?.BROAD_CATEGORY || [];
+        const map = { ...SOOP_CATEGORY_MAP };
+        function traverse(arr) {
+          if (!Array.isArray(arr)) return;
+          for (const item of arr) {
+            if (item.cate_no && item.cate_name) {
+              map[item.cate_no] = item.cate_name;
+            }
+            if (item.child && Array.isArray(item.child)) {
+              traverse(item.child);
+            }
+          }
+        }
+        traverse(list);
+        dynamicSoopCategories = map;
+        return dynamicSoopCategories;
+      }
+    } catch (_) {}
+    return SOOP_CATEGORY_MAP;
+  }
+
+  /**
+   * 根据 SOOP 分类编号解析标准中文分类名称
+   */
+  static getSoopCategoryName(cateNo, fallbackTags = '') {
+    if (!cateNo) return fallbackTags || '综合直播';
+    const cleanNo = String(cateNo).trim();
+    if (dynamicSoopCategories && dynamicSoopCategories[cleanNo]) {
+      return dynamicSoopCategories[cleanNo];
+    }
+    if (SOOP_CATEGORY_MAP[cleanNo]) {
+      return SOOP_CATEGORY_MAP[cleanNo];
+    }
+    // 异步触发增量更新
+    this.refreshSoopCategories().catch(() => {});
+    return fallbackTags || '综合直播';
+  }
+
   /**
    * 解析任意输入的 URL 或 ID，自动识别平台并获取直播源
    */
@@ -324,7 +376,8 @@ export class StreamResolver {
     const finalStreamUrl = this.applyCdn(rawStreamUrl, 'soop', prefCdn);
 
     const openTime = btime > 0 ? (Date.now() - btime * 1000) : 0;
-    const category = channel.CATE_NAME || channel.CATEGORY_NAME || channel.CATEGORY || 'Live';
+    const cateNo = channel.CATE || channel.CATE_NO || '';
+    const category = this.getSoopCategoryName(cateNo, channel.CATE_NAME || channel.CATEGORY_NAME || channel.CATEGORY_TAGS || channel.CATEGORY || '');
 
     return {
       platform: 'soop',
@@ -347,6 +400,7 @@ export class StreamResolver {
       isSubtitle: !!channel.IS_SUBTITLE || !!channel.SUBTITLE_FLAG,
       thumbnail: `https://liveimg.sooplive.co.kr/m/${bno}`,
       category: category,
+      cateNo: cateNo,
       qualities: ['original', 'hd', 'sd']
     };
   }

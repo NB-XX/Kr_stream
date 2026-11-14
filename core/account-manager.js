@@ -3,6 +3,8 @@
  * Account Manager & Followed Streamers Auto-Pull Module
  */
 
+import { SOOP_CATEGORY_MAP } from './soop-categories.js';
+
 export class AccountManager {
   /**
    * 从 Chrome Cookie 中读取指定域名的全部 Cookie 并组合为请求头字符串
@@ -541,6 +543,12 @@ export class AccountManager {
         openTime = (!isNaN(t) && t > 0) ? t : 0;
       }
 
+      const rawCate = String(item.cate_no || item.broad_info?.cate_no || item.cate || '').trim();
+      let category = item.cate_name || '';
+      if (rawCate && (!category || category === 'Live')) {
+        category = SOOP_CATEGORY_MAP[rawCate] || category;
+      }
+
       return {
         platform: 'soop',
         channelId: cleanUserId,
@@ -554,7 +562,8 @@ export class AccountManager {
         thumbnail: avatar, // 卡片头像统一展示主播个人头像，避免显示16:9的直播截图
         avatar: avatar,
         liveThumb: liveThumb,
-        category: item.cate_name || '',
+        category: category,
+        cateNo: rawCate,
         updatedAt: Date.now()
       };
     });
