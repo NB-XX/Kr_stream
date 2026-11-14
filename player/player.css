@@ -2724,3 +2724,120 @@ body.mode-standalone .stream-slot {
     font-size: 11px !important;
   }
 }
+
+/* ===================================================================
+   视频专业统计信息面板 (Stats for Nerds / Debug Info - Chzzk & YouTube 风格)
+   =================================================================== */
+.slot-debug-card {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 38;
+  background: rgba(13, 13, 16, 0.90);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  min-width: 320px;
+  max-width: 440px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+  display: none;
+  pointer-events: auto;
+  user-select: text;
+}
+
+.slot-debug-card.active {
+  display: block;
+}
+
+.debug-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.debug-card-title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--fg-secondary);
+  letter-spacing: 0.05em;
+}
+
+.btn-debug-close {
+  background: transparent;
+  border: none;
+  color: var(--fg-muted);
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 5px;
+  line-height: 1;
+  border-radius: 2px;
+  transition: color 0.15s, background-color 0.15s;
+}
+
+.btn-debug-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.12);
+}
+
+.debug-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.debug-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.debug-label {
+  color: #9ca3af;
+  font-family: var(--font-sans);
+  white-space: nowrap;
+  font-size: 11px;
+  flex-shrink: 0;
+}
+
+.debug-val {
+  color: #f3f4f6;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  text-align: right;
+  word-break: break-all;
+}
+
+.debug-meter-val {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #f3f4f6;
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.debug-gauge {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.5px;
+}
+
+.debug-tick {
+  width: 2px;
+  height: 9px;
+  background: #27272a;
+  border-radius: 1px;
+}
+
+.debug-tick.active {
+  background: #10b981;
+}

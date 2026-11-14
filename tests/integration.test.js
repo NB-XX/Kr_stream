@@ -209,6 +209,18 @@ async function runTests() {
   assert(playerJsCode.includes('showToast('), 'showToast method must be defined in player.js');
   console.log('  Pass: 2.0x catch-up, safe latency clamping, right-click settings menu, and in-slot toast verified.');
 
+  console.log('[Test 9] SOOP Master-HLS quality ladder, Default highest quality, and Video Debug Info (Stats for Nerds)');
+  const streamResolverCode = fs.readFileSync('core/stream-resolver.js', 'utf8');
+  assert(streamResolverCode.includes('common-master-hls'), 'SOOP resolver must query common-master-hls for full quality ladders');
+  assert(streamResolverCode.includes('common-original-hls'), 'SOOP resolver must have original-hls fallback');
+  assert(playerJsCode.includes('isForcedHighestQuality'), 'StreamSlot must track highest quality forced lock');
+  assert(playerJsCode.includes('highestIdx'), 'populateQualities must compute the highest resolution/bitrate level index');
+  assert(playerJsCode.includes('slot-debug-card'), 'Stats for Nerds / Debug Info card must be defined in player.js');
+  assert(playerJsCode.includes('toggleDebugInfo'), 'toggleDebugInfo method must exist in StreamSlot');
+  assert(playerCssCode.includes('.slot-debug-card'), 'slot-debug-card CSS styles must exist in player.css');
+  assert(playerCssCode.includes('.debug-tick'), 'Gauge meter ticks must exist in player.css');
+  console.log('  Pass: SOOP master-hls multi-quality ladder, highest quality default & auto-fallback, and debug panel verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

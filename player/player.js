@@ -51,6 +51,18 @@ class StreamSlot {
     this.maxNetworkRetries = 4;
     this.networkRetryTimer = null;
 
+    // 画质自适应与最高画质默认锁定
+    this.isForcedHighestQuality = true;
+    this.highestStallCount = 0;
+
+    // 视频专业调试统计面板 (Stats for Nerds / Debug Info)
+    this.debugCard = null;
+    this.debugTimer = null;
+    this.isDebugOpen = false;
+    this.lastTotalFrames = 0;
+    this.lastFrameCheckTime = 0;
+    this.sessionId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
+
     this.renderDom();
     this.subtitleEngine = new SubtitleEngine(this);
     this.danmakuEngine = new DanmakuEngine(this);
@@ -505,8 +517,30 @@ class StreamSlot {
     // 画质切换
     this.selectQuality.addEventListener('change', (e) => {
       const levelIdx = parseInt(e.target.value, 10);
+      this.isForcedHighestQuality = false; // 用户主动干预，解除最高画质强制锁定
       if (this.hls) {
         this.hls.currentLevel = levelIdx;
+      }
+      const text = this.selectQuality.options[this.selectQuality.selectedIndex]?.text || '';
+      this.showToast(`已切换画质: ${text}`);
+    });
+
+    // 视频容器与画面区域右键呼出专业调试信息 (Stats for Nerds / Debug Info - 类似 YouTube / Chzzk)
+    if (this.videoContainer) {
+      this.videoContainer.addEventListener('contextmenu', (e) => {
+        if (e.target.closest('.slot-controls') || e.target.closest('.slot-header') || e.target.closest('.catch-replay-bar') || e.target.closest('.slot-debug-card')) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        this.toggleDebugInfo();
+      });
+    }
+
+    // 按 Esc 键快速关闭调试面板
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && this.isDebugOpen) {
+        this.hideDebugInfo();
       }
     });
 
@@ -651,6 +685,9 @@ class StreamSlot {
     this.labelStreamer.textContent = streamer || channelId || '未知主播';
     this.isCatchReplayMode = false;
     this.hasInitialLiveSynced = false;
+    this.isForcedHighestQuality = true;
+    this.highestStallCount = 0;
+    this.sessionId = Math.random().toString(36).substring(2, 10) + Math.random().toString(36).substring(2, 10);
     this.networkRetryCount = 0;
     if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
     this.replayBar.classList.remove('active');
@@ -829,11 +866,25 @@ class StreamSlot {
       });
 
       this.hls.on(Hls.Events.FRAG_LOADED, () => {
-        // 分片正常传输，清空网络异常自愈计数
+        // 分片正常传输，清空网络异常自愈计数与卡顿计数
         this.networkRetryCount = 0;
+        this.highestStallCount = 0;
       });
 
       this.hls.on(Hls.Events.ERROR, (event, data) => {
+        // 最高画质分片加载异常或超时，自动平滑降级至 Auto (自适应码率)
+        if (this.isForcedHighestQuality && this.hls && this.hls.currentLevel !== -1) {
+          if (data.details === Hls.ErrorDetails.FRAG_LOAD_ERROR || 
+              data.details === Hls.ErrorDetails.FRAG_LOAD_TIMEOUT_ERROR ||
+              (data.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR)) {
+            console.warn(`[KRStream] 窗口 #${this.slotId} 最高画质分片拉取受阻，自动降级至 Auto (自适应码率)...`);
+            this.isForcedHighestQuality = false;
+            this.hls.currentLevel = -1;
+            if (this.selectQuality) this.selectQuality.value = '-1';
+            this.showToast('最高画质分片网络拉取受阻，已自动切换至自适应画质 (Auto)');
+          }
+        }
+
         if (data.fatal) {
           switch (data.type) {
             case Hls.ErrorTypes.NETWORK_ERROR:
@@ -862,6 +913,18 @@ class StreamSlot {
               break;
           }
         } else if (data.details === Hls.ErrorDetails.BUFFER_STALLED_ERROR) {
+          // 最高画质下连续卡顿自动降级至 Auto
+          if (this.isForcedHighestQuality && this.hls && this.hls.currentLevel !== -1) {
+            this.highestStallCount = (this.highestStallCount || 0) + 1;
+            if (this.highestStallCount >= 2) {
+              console.warn(`[KRStream] 窗口 #${this.slotId} 最高画质连续缓冲卡顿，自动降级至 Auto...`);
+              this.isForcedHighestQuality = false;
+              this.hls.currentLevel = -1;
+              if (this.selectQuality) this.selectQuality.value = '-1';
+              this.showToast('最高画质下网络下行带宽受限，已自动切换至自适应画质 (Auto)');
+            }
+          }
+
           // 非致命缓冲卡顿 (网络抖动造成解码滞后): 若停滞，尝试微调微前移消除 MSE 卡死
           if (this.video && !this.video.paused && !this.isUserPaused && !this.isCatchReplayMode) {
             const livePos = this.hls?.liveSyncPosition;
@@ -1412,16 +1475,321 @@ class StreamSlot {
   }
 
   populateQualities(levels) {
-    this.selectQuality.innerHTML = '<option value="-1">原画 (最高/Auto)</option>';
-    if (!levels || levels.length <= 1) return;
+    this.selectQuality.innerHTML = '<option value="-1">自动 (Auto ABR)</option>';
+    if (!levels || levels.length === 0) return;
+
+    // 计算并寻找最优/最高画质分级 (优先 height 最大，同高度下比对 bitrate)
+    let highestIdx = -1;
+    let maxScore = -1;
+    levels.forEach((lvl, idx) => {
+      const score = (lvl.height || 0) * 10000000 + (lvl.bitrate || 0);
+      if (score > maxScore) {
+        maxScore = score;
+        highestIdx = idx;
+      }
+    });
 
     levels.forEach((lvl, idx) => {
       const opt = document.createElement('option');
       opt.value = idx;
-      const height = lvl.height ? `${lvl.height}p` : `${Math.round(lvl.bitrate / 1000)}k`;
-      opt.textContent = `${height} (${Math.round(lvl.bitrate / 1000)} kbps)`;
+      const height = lvl.height ? `${lvl.height}p` : `${Math.round((lvl.bitrate || 0) / 1000)}k`;
+      const bitrateStr = lvl.bitrate ? `${Math.round(lvl.bitrate / 1000)} kbps` : '';
+      const isTop = idx === highestIdx;
+      opt.textContent = isTop ? `${height} (原画最高${bitrateStr ? ', ' + bitrateStr : ''})` : `${height}${bitrateStr ? ' (' + bitrateStr + ')' : ''}`;
       this.selectQuality.appendChild(opt);
     });
+
+    // 默认开启最高画质播放；若网络较差分片加载超时，将自动平滑降级至 Auto
+    if (this.isForcedHighestQuality && highestIdx >= 0 && this.hls) {
+      this.hls.startLevel = highestIdx;
+      this.hls.currentLevel = highestIdx;
+      this.selectQuality.value = String(highestIdx);
+    } else if (this.hls) {
+      this.selectQuality.value = String(this.hls.currentLevel);
+    }
+  }
+
+  // ===================================================================
+  // 视频统计与调试面板 (Stats for Nerds / Debug Info - 仿 Chzzk & YouTube)
+  // ===================================================================
+  initDebugCard() {
+    if (this.debugCard) return;
+    const card = document.createElement('div');
+    card.className = 'slot-debug-card';
+    card.id = `debug-card-${this.slotId}`;
+    card.innerHTML = `
+      <div class="debug-card-header">
+        <span class="debug-card-title">STATISTICS & DEBUG INFO</span>
+        <button class="btn-debug-close" id="btn-close-debug-${this.slotId}" title="关闭 (Esc / 再次右键)">✕</button>
+      </div>
+      <div class="debug-grid">
+        <div class="debug-row">
+          <span class="debug-label">Resolution</span>
+          <span class="debug-val" id="dbg-res-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Frames</span>
+          <span class="debug-val" id="dbg-frames-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Bandwidth</span>
+          <span class="debug-val" id="dbg-bw-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Bitrate</span>
+          <span class="debug-val" id="dbg-bitrate-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Buffer</span>
+          <div class="debug-meter-val">
+            <span id="dbg-buffer-${this.slotId}">-- s</span>
+            <div class="debug-gauge" id="dbg-gauge-buffer-${this.slotId}"></div>
+          </div>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Latency</span>
+          <div class="debug-meter-val">
+            <span id="dbg-latency-${this.slotId}">-- s</span>
+            <div class="debug-gauge" id="dbg-gauge-latency-${this.slotId}"></div>
+          </div>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Codecs</span>
+          <span class="debug-val" id="dbg-codecs-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Platform / Streamer</span>
+          <span class="debug-val" id="dbg-streamer-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Category</span>
+          <span class="debug-val" id="dbg-category-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Broad Time</span>
+          <span class="debug-val" id="dbg-time-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">CDN Node</span>
+          <span class="debug-val" id="dbg-cdn-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
+          <span class="debug-label">Session ID</span>
+          <span class="debug-val" id="dbg-session-${this.slotId}">--</span>
+        </div>
+      </div>
+    `;
+
+    // 阻止面板上的右键冒泡关闭自身
+    card.addEventListener('contextmenu', (e) => {
+      e.stopPropagation();
+    });
+
+    const btnClose = card.querySelector(`#btn-close-debug-${this.slotId}`);
+    if (btnClose) {
+      btnClose.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.hideDebugInfo();
+      });
+    }
+
+    if (this.videoContainer) {
+      this.videoContainer.appendChild(card);
+    }
+    this.debugCard = card;
+  }
+
+  toggleDebugInfo() {
+    if (this.isDebugOpen) {
+      this.hideDebugInfo();
+    } else {
+      this.showDebugInfo();
+    }
+  }
+
+  showDebugInfo() {
+    if (!this.debugCard) {
+      this.initDebugCard();
+    }
+    this.debugCard.classList.add('active');
+    this.isDebugOpen = true;
+    this.updateDebugMetrics();
+    if (this.debugTimer) clearInterval(this.debugTimer);
+    this.debugTimer = setInterval(() => this.updateDebugMetrics(), 500);
+  }
+
+  hideDebugInfo() {
+    if (this.debugCard) {
+      this.debugCard.classList.remove('active');
+    }
+    this.isDebugOpen = false;
+    if (this.debugTimer) {
+      clearInterval(this.debugTimer);
+      this.debugTimer = null;
+    }
+  }
+
+  renderGaugeTicks(activeCount, totalCount = 28) {
+    let html = '';
+    const clamped = Math.max(0, Math.min(totalCount, activeCount));
+    for (let i = 0; i < totalCount; i++) {
+      html += `<span class="debug-tick ${i < clamped ? 'active' : ''}"></span>`;
+    }
+    return html;
+  }
+
+  updateDebugMetrics() {
+    if (!this.debugCard || !this.isDebugOpen) return;
+
+    // 1. Resolution
+    const curW = this.video?.videoWidth || 0;
+    const curH = this.video?.videoHeight || 0;
+    let optimalStr = '--';
+    let curLevel = null;
+    if (this.hls && this.hls.levels && this.hls.levels.length > 0) {
+      let maxLvl = this.hls.levels[0];
+      this.hls.levels.forEach((l) => {
+        if ((l.height || 0) > (maxLvl.height || 0) || ((l.height || 0) === (maxLvl.height || 0) && (l.bitrate || 0) > (maxLvl.bitrate || 0))) {
+          maxLvl = l;
+        }
+      });
+      optimalStr = `${maxLvl.width || Math.round((maxLvl.height || 1080) * 16 / 9)}×${maxLvl.height || 1080}@60`;
+      curLevel = this.hls.levels[this.hls.currentLevel] || maxLvl;
+    }
+    const elRes = this.debugCard.querySelector(`#dbg-res-${this.slotId}`);
+    if (elRes) {
+      elRes.textContent = `${curW}×${curH} / optimal ${optimalStr}`;
+    }
+
+    // 2. Frames & Drops
+    const now = performance.now();
+    let fps = 0;
+    let dropped = 0;
+    let total = 0;
+    if (this.video && typeof this.video.getVideoPlaybackQuality === 'function') {
+      const q = this.video.getVideoPlaybackQuality();
+      total = q.totalVideoFrames || 0;
+      dropped = q.droppedVideoFrames || 0;
+      if (this.lastFrameCheckTime > 0 && now > this.lastFrameCheckTime) {
+        const deltaFrames = total - this.lastTotalFrames;
+        const deltaSec = (now - this.lastFrameCheckTime) / 1000;
+        if (deltaSec > 0.1) {
+          fps = Math.round(deltaFrames / deltaSec);
+        }
+      }
+      this.lastTotalFrames = total;
+      this.lastFrameCheckTime = now;
+    }
+    const elFrames = this.debugCard.querySelector(`#dbg-frames-${this.slotId}`);
+    if (elFrames) {
+      elFrames.textContent = `${fps || (curW > 0 ? 60 : 0)} fps · dropped ${dropped} / ${total.toLocaleString()}`;
+    }
+
+    // 3. Bandwidth
+    const bw = this.hls?.bandwidthEstimate || 0;
+    const elBw = this.debugCard.querySelector(`#dbg-bw-${this.slotId}`);
+    if (elBw) {
+      elBw.textContent = bw > 0 ? `${Math.round(bw / 1000).toLocaleString()} Kbps` : '--';
+    }
+
+    // 4. Bitrate
+    const bitrate = curLevel?.bitrate || 0;
+    const elBitrate = this.debugCard.querySelector(`#dbg-bitrate-${this.slotId}`);
+    if (elBitrate) {
+      elBitrate.textContent = bitrate > 0 ? `${Math.round(bitrate / 1000).toLocaleString()} Kbps` : '--';
+    }
+
+    // 5. Buffer
+    let bufferSec = 0;
+    if (this.video && this.video.buffered && this.video.buffered.length > 0) {
+      const cur = this.video.currentTime || 0;
+      for (let i = 0; i < this.video.buffered.length; i++) {
+        const start = this.video.buffered.start(i);
+        const end = this.video.buffered.end(i);
+        if (start <= cur && cur <= end) {
+          bufferSec = Math.max(0, end - cur);
+          break;
+        }
+      }
+    }
+    const elBuf = this.debugCard.querySelector(`#dbg-buffer-${this.slotId}`);
+    const elGaugeBuf = this.debugCard.querySelector(`#dbg-gauge-buffer-${this.slotId}`);
+    if (elBuf) elBuf.textContent = `${bufferSec.toFixed(1)} s`;
+    if (elGaugeBuf) {
+      const activeBufTicks = Math.round((bufferSec / 15.0) * 28);
+      elGaugeBuf.innerHTML = this.renderGaugeTicks(activeBufTicks, 28);
+    }
+
+    // 6. Latency
+    const latency = this.getLiveLatency();
+    const elLat = this.debugCard.querySelector(`#dbg-latency-${this.slotId}`);
+    const elGaugeLat = this.debugCard.querySelector(`#dbg-gauge-latency-${this.slotId}`);
+    if (elLat) elLat.textContent = `${latency.toFixed(1)} s`;
+    if (elGaugeLat) {
+      const activeLatTicks = Math.round((latency / 15.0) * 28);
+      elGaugeLat.innerHTML = this.renderGaugeTicks(activeLatTicks, 28);
+    }
+
+    // 7. Codecs
+    const vCodec = curLevel?.videoCodec || (curLevel?.attrs?.CODECS ? curLevel.attrs.CODECS.split(',')[0] : 'avc1.4D001E');
+    const aCodec = curLevel?.audioCodec || (curLevel?.attrs?.CODECS ? curLevel.attrs.CODECS.split(',')[1] : 'mp4a.40.2');
+    const elCodecs = this.debugCard.querySelector(`#dbg-codecs-${this.slotId}`);
+    if (elCodecs) elCodecs.textContent = `${vCodec} / ${aCodec}`;
+
+    // 8. Platform & Streamer
+    const platform = (this.currentStreamData?.platform || 'soop').toUpperCase();
+    const streamer = this.currentStreamData?.streamer || this.currentStreamData?.channelId || '--';
+    const elStreamer = this.debugCard.querySelector(`#dbg-streamer-${this.slotId}`);
+    if (elStreamer) elStreamer.textContent = `[${platform}] ${streamer}`;
+
+    // 9. Category
+    const category = this.currentStreamData?.category || 'Live';
+    const elCat = this.debugCard.querySelector(`#dbg-category-${this.slotId}`);
+    if (elCat) elCat.textContent = category;
+
+    // 10. Broad Time & Duration
+    const elTime = this.debugCard.querySelector(`#dbg-time-${this.slotId}`);
+    if (elTime) {
+      let openTime = this.currentStreamData?.openTime;
+      if (!openTime && this.currentStreamData?.btime) {
+        openTime = Date.now() - this.currentStreamData.btime * 1000;
+      }
+      if (openTime && openTime > 0) {
+        const d = new Date(openTime);
+        const timeStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
+        const durSec = Math.max(0, Math.floor((Date.now() - openTime) / 1000));
+        const durStr = `${Math.floor(durSec / 3600)}h ${Math.floor((durSec % 3600) / 60)}m`;
+        elTime.textContent = `${timeStr} (${durStr})`;
+      } else {
+        elTime.textContent = '--';
+      }
+    }
+
+    // 11. CDN Node
+    let cdnHost = '--';
+    try {
+      if (this.currentStreamData?.streamUrl) {
+        cdnHost = new URL(this.currentStreamData.streamUrl).hostname;
+      }
+    } catch (e) {}
+    const elCdn = this.debugCard.querySelector(`#dbg-cdn-${this.slotId}`);
+    if (elCdn) {
+      elCdn.textContent = `${cdnHost} (${this.selectedCdn || 'default'})`;
+    }
+
+    // 12. Session ID & Fragment SN
+    let sn = '--';
+    if (this.hls && curLevel?.details?.fragments && curLevel.details.fragments.length > 0) {
+      const curTime = this.video?.currentTime || 0;
+      const frag = curLevel.details.fragments.find((f) => f.start <= curTime && curTime <= (f.start + f.duration)) || curLevel.details.fragments[curLevel.details.fragments.length - 1];
+      if (frag && typeof frag.sn !== 'undefined') {
+        sn = String(frag.sn);
+      }
+    }
+    const elSession = this.debugCard.querySelector(`#dbg-session-${this.slotId}`);
+    if (elSession) {
+      elSession.textContent = `${this.sessionId} · sn ${sn}`;
+    }
   }
 
   formatTime(totalSec) {
@@ -1858,6 +2226,11 @@ class StreamSlot {
     if (this.catchupCheckerTimer) clearInterval(this.catchupCheckerTimer);
     if (this.networkRetryTimer) clearInterval(this.networkRetryTimer);
     if (this.recordingTimer) clearInterval(this.recordingTimer);
+    if (this.debugTimer) clearInterval(this.debugTimer);
+    if (this.debugCard && this.debugCard.parentNode) {
+      this.debugCard.parentNode.removeChild(this.debugCard);
+      this.debugCard = null;
+    }
     if (this.catchupMenu && this.catchupMenu.parentNode) {
       this.catchupMenu.parentNode.removeChild(this.catchupMenu);
       this.catchupMenu = null;

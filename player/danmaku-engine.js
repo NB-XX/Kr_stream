@@ -89,16 +89,7 @@ export class DanmakuEngine {
       });
     }
 
-    // 绑定弹幕图层与视频区域右键呼出弹幕样式设置
-    if (this.containerEl) {
-      this.containerEl.addEventListener('contextmenu', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        this.showSettingsMenu(e.clientX, e.clientY);
-      });
-    }
-
-    // 3. 创建弹幕设置菜单
+    // 3. 创建弹幕设置菜单 (底栏弹幕按钮右键可呼出)
     this.createSettingsMenu();
   }
 
@@ -973,15 +964,7 @@ export class DanmakuEngine {
     danmakuEl.style.fontSize = `${this.fontSize}px`;
     danmakuEl.style.opacity = `${this.opacity}`;
     danmakuEl.style.animationDuration = `${this.speed}s`;
-
     danmakuEl.innerHTML = renderedHtml;
-
-    // 支持在飞行弹幕上右键直接呼出样式调节面板
-    danmakuEl.oncontextmenu = (e) => {
-      e.preventDefault();
-      e.stopPropagation();
-      this.showSettingsMenu(e.clientX, e.clientY);
-    };
 
     this.containerEl.appendChild(danmakuEl);
 
