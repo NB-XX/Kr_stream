@@ -1418,11 +1418,11 @@ video {
 .volume-box {
   display: flex;
   align-items: center;
-  gap: 3px;
+  gap: 4px;
 }
 
 .vol-slider {
-  width: 50px;
+  width: 68px;
   height: 3px;
   accent-color: var(--fg-primary);
   cursor: pointer;
@@ -1432,7 +1432,8 @@ video {
   font-family: var(--font-mono);
   font-size: 9px;
   color: var(--fg-muted);
-  min-width: 24px;
+  min-width: 28px;
+  text-align: left;
 }
 
 /* 槽位下拉选择器 */

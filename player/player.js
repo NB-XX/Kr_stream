@@ -206,12 +206,12 @@ class StreamSlot {
             <span class="ctrl-replay-tag" id="ctrl-replay-tag-${this.slotId}">时光机</span>
           </button>
 
-          <!-- 音量 & 300% 增益 -->
+          <!-- 音量 & 200% 增益 -->
           <div class="volume-box">
             <button class="ctrl-icon-btn" id="btn-mute-${this.slotId}" title="静音">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>
             </button>
-            <input type="range" class="vol-slider" id="vol-slider-${this.slotId}" min="0" max="300" value="100" />
+            <input type="range" class="vol-slider" id="vol-slider-${this.slotId}" min="0" max="200" value="100" />
             <span class="vol-text" id="vol-text-${this.slotId}">100%</span>
           </div>
         </div>
@@ -341,10 +341,24 @@ class StreamSlot {
     const volSlider = this.dom.querySelector(`#vol-slider-${this.slotId}`);
     const volText = this.dom.querySelector(`#vol-text-${this.slotId}`);
     const btnMute = this.dom.querySelector(`#btn-mute-${this.slotId}`);
+    const volumeBox = this.dom.querySelector('.volume-box');
 
     volSlider.addEventListener('input', (e) => {
       this.setVolume(e.target.value);
     });
+
+    // 支持鼠标滚轮在音量条及音量区域快速细致微调 (0~200%，默认步长 5%，按住 Shift 步长 1%)
+    const handleVolWheel = (e) => {
+      e.preventDefault();
+      const current = parseInt(volSlider.value, 10) || 100;
+      const step = e.shiftKey ? 1 : 5;
+      const next = Math.max(0, Math.min(200, current + (e.deltaY < 0 ? step : -step)));
+      this.setVolume(next);
+    };
+    volSlider.addEventListener('wheel', handleVolWheel, { passive: false });
+    if (volumeBox) {
+      volumeBox.addEventListener('wheel', handleVolWheel, { passive: false });
+    }
 
     btnMute.addEventListener('click', () => {
       if (this.video.muted) {
@@ -705,9 +719,11 @@ class StreamSlot {
   }
 
   setVolume(val) {
-    const volumePercent = parseInt(val, 10);
-    this.dom.querySelector(`#vol-text-${this.slotId}`).textContent = `${volumePercent}%`;
-    this.dom.querySelector(`#vol-slider-${this.slotId}`).value = volumePercent;
+    const volumePercent = Math.max(0, Math.min(200, isNaN(parseInt(val, 10)) ? 100 : parseInt(val, 10)));
+    const elText = this.dom?.querySelector(`#vol-text-${this.slotId}`);
+    const elSlider = this.dom?.querySelector(`#vol-slider-${this.slotId}`);
+    if (elText) elText.textContent = `${volumePercent}%`;
+    if (elSlider) elSlider.value = volumePercent;
 
     if (volumePercent === 0) {
       this.video.muted = true;

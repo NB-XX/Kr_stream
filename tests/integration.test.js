@@ -280,6 +280,13 @@ async function runTests() {
   assert(streamResolverCode.includes('isDirectHls'), 'StreamResolver must support direct M3U8 stream input');
   console.log('  Pass: Chromecast auth 1080p master playlist, metadata propagation, and 2-column Debug Info verified.');
 
+  console.log('[Test 14] Volume control slider 0~200% range and mouse wheel adjustment');
+  assert(playerJsCode.includes('min="0" max="200"'), 'Volume slider range must be set to 0~200% for comfortable 100% midpoint');
+  assert(!playerJsCode.includes('max="300"'), 'Old max 300% must be removed');
+  assert(playerJsCode.includes('handleVolWheel'), 'Volume slider must support mouse wheel fine tuning');
+  assert(playerCssCode.includes('.vol-slider {'), 'vol-slider CSS styles must exist');
+  console.log('  Pass: Volume control 0~200% range and wheel tuning verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 
