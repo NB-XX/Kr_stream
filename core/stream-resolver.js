@@ -315,6 +315,20 @@ export class StreamResolver {
     const cdnKey = CDN_MAPPING[rawCdn] || rawCdn;
     const btime = parseInt(channel.BTIME || '0', 10);
 
+    // 检测主播是否支持 1440p (QHD / 2560x1440)
+    const is1440p = Boolean(
+      channel.S1440P === 1 ||
+      channel.RESOLUTION === '2560x1440' ||
+      (Array.isArray(channel.VIEWPRESET) && channel.VIEWPRESET.some((p) => p.label_resolution === '1440'))
+    );
+
+    // 确定请求画质: 优先遵循 options.quality; 若未指定且为 1440p 直播，因 SOOP Web 端对 1440p 原画限制需专属 P2P 插件，默认调度 1080p (hd8k) 实现直接点击开播免手动切换
+    // 标准直播默认直接查询 common-original-hls
+    let targetQuality = options.quality || '';
+    if (!targetQuality) {
+      targetQuality = is1440p ? 'hd8k' : 'original';
+    }
+
     // 第二步: 获取播放鉴权 AID Token (继承韩国地区破限身份)
     const aidEp = endpoints[0];
     const body2 = new URLSearchParams({
@@ -324,7 +338,7 @@ export class StreamResolver {
       pwd: '',
       player_type: 'html5',
       stream_type: 'common',
-      quality: 'original',
+      quality: targetQuality,
       mode: 'landing',
       from_api: '0',
       is_revive: 'false',
@@ -351,9 +365,9 @@ export class StreamResolver {
       throw new Error('未能获取 SOOP 播放凭证 AID');
     }
 
-    // 第三步: 调度直播分流服务器，获取真实的 Original HLS 直播流
-    const assignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&broad_key=${bno}-common-original-hls`;
-    const res3 = await fetch(assignUrl, {
+    // 第三步: 调度直播分流服务器，获取真实的 HLS 直播流
+    let assignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&use_cors=true&broad_key=${bno}-common-${targetQuality}-hls&player_mode=landing`;
+    let res3 = await fetch(assignUrl, {
       headers: {
         'Origin': 'https://play.sooplive.com',
         'Referer': `https://play.sooplive.com/${cleanId}`,
@@ -363,8 +377,27 @@ export class StreamResolver {
       },
       credentials: 'omit'
     });
-    const assignData = await res3.json();
-    const viewUrl = assignData?.view_url;
+    let assignData = await res3.json().catch(() => null);
+    let viewUrl = assignData?.view_url;
+
+    // 容灾机制: 若以 original 请求 1440p 流受阻或未分配，自动降级调度 1080p (hd8k)
+    if (!viewUrl && targetQuality === 'original' && is1440p) {
+      console.warn(`[SOOP] 频道 ${cleanId} 1440p 原画调度未响应，自动降级至 1080p (hd8k)...`);
+      targetQuality = 'hd8k';
+      assignUrl = `${rmd}/broad_stream_assign.html?return_type=${encodeURIComponent(cdnKey)}&use_cors=true&broad_key=${bno}-common-${targetQuality}-hls&player_mode=landing`;
+      res3 = await fetch(assignUrl, {
+        headers: {
+          'Origin': 'https://play.sooplive.com',
+          'Referer': `https://play.sooplive.com/${cleanId}`,
+          'X-Forwarded-For': '211.234.118.1',
+          'Client-IP': '211.234.118.1',
+          'X-Real-IP': '211.234.118.1'
+        },
+        credentials: 'omit'
+      });
+      assignData = await res3.json().catch(() => null);
+      viewUrl = assignData?.view_url;
+    }
 
     if (!viewUrl) {
       throw new Error('SOOP 未分配到有效直播流地址，可能正在转码或流未就绪');
@@ -401,7 +434,11 @@ export class StreamResolver {
       thumbnail: `https://liveimg.sooplive.co.kr/m/${bno}`,
       category: category,
       cateNo: cateNo,
-      qualities: ['original', 'hd', 'sd']
+      is1440p: is1440p,
+      resolution: channel.RESOLUTION || (is1440p ? '2560x1440' : '1920x1080'),
+      viewPreset: channel.VIEWPRESET || [],
+      selectedQuality: targetQuality,
+      qualities: is1440p ? ['original', 'hd8k', 'hd4k', 'hd', 'sd'] : ['original', 'hd', 'sd']
     };
   }
 

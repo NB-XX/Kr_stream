@@ -249,6 +249,16 @@ async function runTests() {
   assert(streamResolverCode.includes('refreshSoopCategories'), 'StreamResolver must support dynamic refreshSoopCategories');
   console.log('  Pass: SOOP Category Code mapping and dynamic resolution verified.');
 
+  console.log('[Test 11] SOOP 1440p direct play and dynamic quality ladder');
+  assert(streamResolverCode.includes('is1440p'), 'StreamResolver must detect 1440p streams');
+  assert(streamResolverCode.includes("targetQuality = is1440p ? 'hd8k' : 'original'"), 'StreamResolver must default 1440p streams to hd8k (1080p) for direct click playback');
+  assert(streamResolverCode.includes('viewPreset'), 'StreamResolver must export viewPreset');
+  assert(playerJsCode.includes('1440p 超清原画'), 'Player must provide 1440p label in quality switching');
+  assert(playerJsCode.includes('1080p 高清原画'), 'Player must provide 1080p label in quality switching');
+  assert(playerJsCode.includes('viewPreset'), 'Player populateQualities must support dynamic viewPreset');
+  assert(accountManagerCode.includes('soopLiveHeaders'), 'AccountManager must pass soopLiveHeaders for player_live_api and stream assign');
+  console.log('  Pass: SOOP 1440p direct playback & quality switching verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

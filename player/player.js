@@ -615,9 +615,14 @@ class StreamSlot {
     this.manager.saveState();
   }
 
-  changeSoopQuality(qualityKey) {
+  async changeSoopQuality(qualityKey) {
     this.selectedSoopQuality = qualityKey;
-    this.isForcedHighestQuality = (qualityKey === 'original');
+    const is1440 = Boolean(
+      this.currentStreamData?.is1440p ||
+      this.currentStreamData?.resolution === '2560x1440' ||
+      (Array.isArray(this.currentStreamData?.viewPreset) && this.currentStreamData.viewPreset.some(p => p.label_resolution === '1440'))
+    );
+    this.isForcedHighestQuality = (qualityKey === 'original' || (is1440 && qualityKey === 'hd8k'));
     if (this.selectQuality) {
       this.selectQuality.value = qualityKey;
     }
@@ -625,24 +630,63 @@ class StreamSlot {
     const curUrl = this.currentStreamData?.originalStreamUrl || this.currentStreamData?.streamUrl;
     if (!curUrl) return;
 
-    const newOriginal = curUrl.replace(/\/(original|hd|sd)\/playlist\.m3u8/i, `/${qualityKey}/playlist.m3u8`);
-    const cdnKey = this.selectedCdn || 'global';
-    const finalUrl = StreamResolver.applyCdn(newOriginal, 'soop', cdnKey);
-
-    this.currentStreamData.originalStreamUrl = newOriginal;
-    this.currentStreamData.streamUrl = finalUrl;
-    this.currentStreamData.selectedQuality = qualityKey;
-
-    const labelMap = { original: '1080p 原画', hd: '720p 高清', sd: '540p 标清' };
+    const labelMap = {
+      original: is1440 ? '1440p 超清原画' : '1080p 原画',
+      hd8k: '1080p 高清原画',
+      hd4k: '720p 高清',
+      hd: '540p 标清',
+      sd: '360p 流畅'
+    };
     const label = labelMap[qualityKey] || qualityKey;
+
+    let finalUrl = '';
+    // 如果是传统路径式 /quality/playlist.m3u8，直接执行极速替换
+    if (/\/(original|hd8k|hd4k|hd|sd)\/playlist\.m3u8/i.test(curUrl)) {
+      const newOriginal = curUrl.replace(/\/(original|hd8k|hd4k|hd|sd)\/playlist\.m3u8/i, `/${qualityKey}/playlist.m3u8`);
+      const cdnKey = this.selectedCdn || 'global';
+      finalUrl = StreamResolver.applyCdn(newOriginal, 'soop', cdnKey);
+      this.currentStreamData.originalStreamUrl = newOriginal;
+      this.currentStreamData.streamUrl = finalUrl;
+    } else {
+      // 集群式 auth_playlist.m3u8，通过后台统一重新调度对应画质的流地址
+      this.showLoading(`正在无缝切换至 ${label}...`);
+      try {
+        const channelId = this.currentStreamData?.channelId;
+        const res = await chrome.runtime.sendMessage({
+          action: 'RESOLVE_STREAM',
+          payload: {
+            input: `https://play.sooplive.com/${channelId}`,
+            options: {
+              broadNo: this.currentStreamData?.bno,
+              quality: qualityKey,
+              cdnPreference: this.selectedCdn
+            }
+          }
+        });
+        if (res.success && res.data?.streamUrl) {
+          finalUrl = res.data.streamUrl;
+          this.currentStreamData = { ...this.currentStreamData, ...res.data };
+        }
+      } catch (err) {
+        console.warn(`[KRStream] 重新调度画质 ${qualityKey} 异常:`, err);
+      }
+    }
+
+    if (!finalUrl) {
+      finalUrl = this.currentStreamData?.streamUrl;
+    }
+
+    this.currentStreamData.selectedQuality = qualityKey;
     this.showToast(`已切换至 SOOP ${label}`);
 
-    if (this.hls) {
-      this.showLoading(`正在无缝切换至 ${label}...`);
+    if (this.hls && finalUrl) {
+      this.showLoading(`正在载入 ${label}...`);
       this.hls.loadSource(finalUrl);
       this.hls.startLoad();
       this.video.play().catch(() => {});
       setTimeout(() => this.hideLoading(), 800);
+    } else {
+      this.hideLoading();
     }
     this.manager.saveState();
   }
@@ -952,10 +996,12 @@ class StreamSlot {
               (data.fatal && data.type === Hls.ErrorTypes.NETWORK_ERROR)) {
             if (this.currentStreamData?.platform === 'soop') {
               if (this.selectedSoopQuality === 'original') {
-                console.warn(`[KRStream] 窗口 #${this.slotId} SOOP 原画拉取受阻，自动降级至 720p 高清...`);
+                const fallbackQ = this.currentStreamData?.is1440p ? 'hd8k' : 'hd';
+                const fallbackLabel = fallbackQ === 'hd8k' ? '1080p 高清' : '720p 高清';
+                console.warn(`[KRStream] 窗口 #${this.slotId} SOOP 原画拉取受阻，自动降级至 ${fallbackLabel}...`);
                 this.isForcedHighestQuality = false;
-                this.changeSoopQuality('hd');
-                this.showToast('SOOP 原画分片网络拉取受阻，已自动降级至 720p 高清');
+                this.changeSoopQuality(fallbackQ);
+                this.showToast(`SOOP 原画分片网络拉取受阻，已自动降级至 ${fallbackLabel}`);
                 return;
               }
             } else if (this.hls.currentLevel !== -1) {
@@ -1002,10 +1048,12 @@ class StreamSlot {
             if (this.highestStallCount >= 2) {
               if (this.currentStreamData?.platform === 'soop') {
                 if (this.selectedSoopQuality === 'original') {
-                  console.warn(`[KRStream] 窗口 #${this.slotId} SOOP 原画连续缓冲卡顿，自动降级至 720p 高清...`);
+                  const fallbackQ = this.currentStreamData?.is1440p ? 'hd8k' : 'hd';
+                  const fallbackLabel = fallbackQ === 'hd8k' ? '1080p 高清' : '720p 高清';
+                  console.warn(`[KRStream] 窗口 #${this.slotId} SOOP 原画连续缓冲卡顿，自动降级至 ${fallbackLabel}...`);
                   this.isForcedHighestQuality = false;
-                  this.changeSoopQuality('hd');
-                  this.showToast('原画下网络带宽受限，已自动降级至 720p 高清');
+                  this.changeSoopQuality(fallbackQ);
+                  this.showToast(`原画下网络带宽受限，已自动降级至 ${fallbackLabel}`);
                   return;
                 }
               } else if (this.hls.currentLevel !== -1) {
@@ -1569,12 +1617,45 @@ class StreamSlot {
 
   populateQualities(levels) {
     if (this.currentStreamData?.platform === 'soop') {
-      this.selectQuality.innerHTML = `
-        <option value="original">1080p (原画最高, 8000 kbps)</option>
-        <option value="hd">720p (高清, 4000 kbps)</option>
-        <option value="sd">540p (标清, 1500 kbps)</option>
-      `;
-      this.selectedSoopQuality = this.selectedSoopQuality || 'original';
+      const is1440 = Boolean(
+        this.currentStreamData.is1440p ||
+        this.currentStreamData.resolution === '2560x1440' ||
+        (Array.isArray(this.currentStreamData.viewPreset) && this.currentStreamData.viewPreset.some((p) => p.label_resolution === '1440'))
+      );
+
+      const presets = Array.isArray(this.currentStreamData.viewPreset) && this.currentStreamData.viewPreset.length > 0
+        ? this.currentStreamData.viewPreset.filter((p) => p.name && p.name !== 'auto')
+        : null;
+
+      if (presets && presets.length > 0) {
+        // 根据官方 viewPreset 动态生成从高至低的分辨率列表
+        const sorted = [...presets].sort((a, b) => (parseInt(b.label_resolution, 10) || b.bps || 0) - (parseInt(a.label_resolution, 10) || a.bps || 0));
+        this.selectQuality.innerHTML = sorted.map((p) => {
+          const res = p.label_resolution ? `${p.label_resolution}p` : p.label;
+          const bpsStr = p.bps ? `, ${p.bps} kbps` : '';
+          const tag = (p.name === 'original' && !is1440) || (p.name === 'hd8k' && is1440)
+            ? '原画'
+            : (p.name === 'original' && is1440 ? '超清原画' : (p.bps >= 4000 ? '高清' : (p.bps >= 1000 ? '标清' : '流畅')));
+          return `<option value="${p.name}">${res} (${tag}${bpsStr})</option>`;
+        }).join('');
+      } else if (is1440) {
+        this.selectQuality.innerHTML = `
+          <option value="original">1440p (超清原画, 16000 kbps)</option>
+          <option value="hd8k">1080p (高清原画, 8000 kbps)</option>
+          <option value="hd4k">720p (高清, 4000 kbps)</option>
+          <option value="hd">540p (标清, 1000 kbps)</option>
+          <option value="sd">360p (流畅, 500 kbps)</option>
+        `;
+      } else {
+        this.selectQuality.innerHTML = `
+          <option value="original">1080p (原画最高, 8000 kbps)</option>
+          <option value="hd">720p (高清, 4000 kbps)</option>
+          <option value="sd">540p (标清, 1500 kbps)</option>
+        `;
+      }
+
+      const defaultQ = this.currentStreamData.selectedQuality || (is1440 ? 'hd8k' : 'original');
+      this.selectedSoopQuality = this.selectedSoopQuality || defaultQ;
       this.selectQuality.value = this.selectedSoopQuality;
       return;
     }
@@ -1760,7 +1841,12 @@ class StreamSlot {
       optimalStr = `${maxLvl.width || Math.round((maxLvl.height || 1080) * 16 / 9)}×${maxLvl.height || 1080}@60`;
       curLevel = this.hls.levels[this.hls.currentLevel] || maxLvl;
     } else if (this.currentStreamData?.platform === 'soop') {
-      optimalStr = '1920×1080@60';
+      const is1440 = Boolean(
+        this.currentStreamData.is1440p ||
+        this.currentStreamData.resolution === '2560x1440' ||
+        (Array.isArray(this.currentStreamData.viewPreset) && this.currentStreamData.viewPreset.some((p) => p.label_resolution === '1440'))
+      );
+      optimalStr = is1440 ? '2560×1440@60' : '1920×1080@60';
     }
     const elRes = this.debugCard.querySelector(`#dbg-res-${this.slotId}`);
     if (elRes) {
@@ -1802,7 +1888,18 @@ class StreamSlot {
     let bitrate = curLevel?.bitrate || 0;
     if (!bitrate && this.currentStreamData?.platform === 'soop') {
       const q = this.selectedSoopQuality || 'original';
-      bitrate = q === 'original' ? 8000000 : (q === 'hd' ? 4000000 : 1500000);
+      const is1440 = Boolean(
+        this.currentStreamData.is1440p ||
+        this.currentStreamData.resolution === '2560x1440' ||
+        (Array.isArray(this.currentStreamData.viewPreset) && this.currentStreamData.viewPreset.some((p) => p.label_resolution === '1440'))
+      );
+      if (is1440) {
+        const bpsMap = { original: 16000000, hd8k: 8000000, hd4k: 4000000, hd: 1000000, sd: 500000 };
+        bitrate = bpsMap[q] || 8000000;
+      } else {
+        const bpsMap = { original: 8000000, hd: 4000000, sd: 1500000 };
+        bitrate = bpsMap[q] || 8000000;
+      }
     }
     const elBitrate = this.debugCard.querySelector(`#dbg-bitrate-${this.slotId}`);
     if (elBitrate) {

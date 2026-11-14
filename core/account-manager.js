@@ -119,19 +119,24 @@ export class AccountManager {
         }
       });
 
-      // 3. SOOP 直播解析与海外破限专有规则 (Rule 10003 & 10011: 注入韩国住宅 IP 破除海外区域锁)
+      // 3. SOOP 直播解析与海外破限专有规则 (Rule 10003 & 10011: 注入韩国住宅 IP 破除海外区域锁并透传登录凭证)
+      const soopLiveHeaders = [
+        { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
+        { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' },
+        { header: 'X-Forwarded-For', operation: 'set', value: '211.234.118.1' },
+        { header: 'Client-IP', operation: 'set', value: '211.234.118.1' },
+        { header: 'X-Real-IP', operation: 'set', value: '211.234.118.1' }
+      ];
+      if (soopCookie) {
+        soopLiveHeaders.push({ header: 'Cookie', operation: 'set', value: soopCookie });
+      }
+
       rulesToAdd.push({
         id: 10003,
         priority: 28,
         action: {
           type: 'modifyHeaders',
-          requestHeaders: [
-            { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
-            { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' },
-            { header: 'X-Forwarded-For', operation: 'set', value: '211.234.118.1' },
-            { header: 'Client-IP', operation: 'set', value: '211.234.118.1' },
-            { header: 'X-Real-IP', operation: 'set', value: '211.234.118.1' }
-          ]
+          requestHeaders: soopLiveHeaders
         },
         condition: {
           urlFilter: 'player_live_api.php',
@@ -145,13 +150,7 @@ export class AccountManager {
         priority: 28,
         action: {
           type: 'modifyHeaders',
-          requestHeaders: [
-            { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
-            { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' },
-            { header: 'X-Forwarded-For', operation: 'set', value: '211.234.118.1' },
-            { header: 'Client-IP', operation: 'set', value: '211.234.118.1' },
-            { header: 'X-Real-IP', operation: 'set', value: '211.234.118.1' }
-          ]
+          requestHeaders: soopLiveHeaders
         },
         condition: {
           urlFilter: 'broad_stream_assign.html',
