@@ -307,6 +307,24 @@ export class AccountManager {
         }
       });
 
+      // 11. SOOP 跨域流媒体与分片请求头注入 (Rule 10012: 避免 CDN 节点对 extension origin 403 Forbidden)
+      rulesToAdd.push({
+        id: 10012,
+        priority: 28,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: [
+            { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
+            { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' }
+          ]
+        },
+        condition: {
+          regexFilter: '^https://.*[.](?:sooplive[.]com|sooplive[.]co[.]kr|afreecatv[.]com)/',
+          initiatorDomains: [extensionId],
+          resourceTypes: ['xmlhttprequest', 'media', 'other']
+        }
+      });
+
       await chrome.declarativeNetRequest.updateDynamicRules({
         removeRuleIds: ruleIdsToRemove,
         addRules: rulesToAdd

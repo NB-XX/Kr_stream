@@ -259,6 +259,15 @@ async function runTests() {
   assert(accountManagerCode.includes('soopLiveHeaders'), 'AccountManager must pass soopLiveHeaders for player_live_api and stream assign');
   console.log('  Pass: SOOP 1440p direct playback & quality switching verified.');
 
+  console.log('[Test 12] SOOP CDN 403 prevention (Rule 10012), master playlist multi-level ladder, and compact Debug Info');
+  assert(accountManagerCode.includes('10012'), 'AccountManager must register DNR rule 10012 for SOOP CDN streams');
+  assert(streamResolverCode.includes('common-master-hls'), 'StreamResolver must request master playlist for full quality ladder');
+  assert(streamResolverCode.includes("prefCdn === 'kr_zone' ? 'lg_cdn_pc_web' : 'gcp_cdn'"), 'StreamResolver must default to gcp_cdn');
+  assert(playerJsCode.includes("initialData?.platform === 'soop' ? 'global' : 'default'"), 'StreamSlot must default SOOP to global CDN');
+  assert(playerJsCode.includes('renderGaugeTicks(activeCount, totalCount = 30)'), 'StreamSlot must support 30-tick segmented gauge matching Chzzk style');
+  assert(playerCssCode.includes('rgba(18, 18, 22, 0.92)'), 'Debug card must use modern frosted glass dark background');
+  console.log('  Pass: SOOP CDN 403 prevention, master playlist multi-level ladder, and compact Debug Info verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

@@ -22,7 +22,7 @@ class StreamSlot {
     this.slotId = slotId;
     this.manager = manager;
     this.currentStreamData = initialData ? { ...initialData } : null;
-    this.selectedCdn = initialData?.selectedCdn || 'default';
+    this.selectedCdn = initialData?.selectedCdn || (initialData?.platform === 'soop' ? 'global' : 'default');
 
     this.hls = null;
     this.audioCtx = null;
@@ -516,19 +516,17 @@ class StreamSlot {
       }
     });
 
-    // 画质切换 (支持 SOOP 多画质重载与 Chzzk Hls.js 分级切换)
+    // 画质切换 (支持多画质 Hls.js 分级平滑切换与单流重载)
     this.selectQuality.addEventListener('change', (e) => {
       const val = e.target.value;
-      if (this.currentStreamData?.platform === 'soop') {
-        this.changeSoopQuality(val);
-      } else {
+      if (this.hls && this.hls.levels && this.hls.levels.length > 0) {
         const levelIdx = parseInt(val, 10);
         this.isForcedHighestQuality = false; // 用户主动干预，解除最高画质强制锁定
-        if (this.hls) {
-          this.hls.currentLevel = levelIdx;
-        }
+        this.hls.currentLevel = levelIdx;
         const text = this.selectQuality.options[this.selectQuality.selectedIndex]?.text || '';
         this.showToast(`已切换画质: ${text}`);
+      } else if (this.currentStreamData?.platform === 'soop') {
+        this.changeSoopQuality(val);
       }
     });
 
@@ -763,11 +761,29 @@ class StreamSlot {
 
   async loadStream(streamData) {
     this.currentStreamData = { ...streamData };
+    let { streamUrl, platform, streamer, title, channelId } = streamData;
+
     if (streamData.selectedCdn) {
       this.selectedCdn = streamData.selectedCdn;
+    } else if (platform === 'soop' && (!this.selectedCdn || this.selectedCdn === 'default')) {
+      this.selectedCdn = 'global';
     }
     this.selectedSoopQuality = streamData.selectedQuality || 'original';
-    let { streamUrl, platform, streamer, title, channelId } = streamData;
+
+    // 统一设置开播时间点，供进度条及 Debug Info 精准显示
+    const initOpen = streamData.openTime || streamData.openDate;
+    if (initOpen) {
+      if (typeof initOpen === 'number') {
+        this.streamStartTime = initOpen > 1e11 ? initOpen : initOpen * 1000;
+      } else if (typeof initOpen === 'string') {
+        const iso = initOpen.includes('T') ? initOpen : initOpen.replace(' ', 'T');
+        const tz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
+        const t = new Date(tz).getTime();
+        this.streamStartTime = (!isNaN(t) && t > 0) ? t : (Date.parse(initOpen) || 0);
+      }
+    } else if (streamData.btime) {
+      this.streamStartTime = Date.now() - streamData.btime * 1000;
+    }
 
     this.showLoading(`正在连接 ${streamer || channelId} 直播源...`);
     this.labelStreamer.textContent = streamer || channelId || '未知主播';
@@ -806,7 +822,17 @@ class StreamSlot {
         if (res.success && res.data?.streamUrl) {
           streamUrl = res.data.streamUrl;
           this.currentStreamData = { ...this.currentStreamData, ...res.data };
-          if (res.data.btime) {
+          const resolvedOpen = res.data.openTime || res.data.openDate;
+          if (resolvedOpen) {
+            if (typeof resolvedOpen === 'number') {
+              this.streamStartTime = resolvedOpen > 1e11 ? resolvedOpen : resolvedOpen * 1000;
+            } else if (typeof resolvedOpen === 'string') {
+              const iso = resolvedOpen.includes('T') ? resolvedOpen : resolvedOpen.replace(' ', 'T');
+              const tz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
+              const t = new Date(tz).getTime();
+              this.streamStartTime = (!isNaN(t) && t > 0) ? t : (Date.parse(resolvedOpen) || 0);
+            }
+          } else if (res.data.btime) {
             this.streamStartTime = Date.now() - res.data.btime * 1000;
           }
         } else {
@@ -1616,7 +1642,7 @@ class StreamSlot {
   }
 
   populateQualities(levels) {
-    if (this.currentStreamData?.platform === 'soop') {
+    if (this.currentStreamData?.platform === 'soop' && (!levels || levels.length === 0)) {
       const is1440 = Boolean(
         this.currentStreamData.is1440p ||
         this.currentStreamData.resolution === '2560x1440' ||
@@ -1695,7 +1721,7 @@ class StreamSlot {
   }
 
   // ===================================================================
-  // 视频统计与调试面板 (Stats for Nerds / Debug Info - 仿 Chzzk & YouTube)
+  // 视频统计与调试面板 (Stats for Nerds / Debug Info - 仿 Chzzk 极简深色风格)
   // ===================================================================
   initDebugCard() {
     if (this.debugCard) return;
@@ -1703,10 +1729,7 @@ class StreamSlot {
     card.className = 'slot-debug-card';
     card.id = `debug-card-${this.slotId}`;
     card.innerHTML = `
-      <div class="debug-card-header">
-        <span class="debug-card-title">直播统计与调试信息 (DEBUG INFO)</span>
-        <button class="btn-debug-close" id="btn-close-debug-${this.slotId}" title="关闭 (Esc / 再次右键)">✕</button>
-      </div>
+      <button class="btn-debug-close" id="btn-close-debug-${this.slotId}" title="关闭 (Esc / 再次右键)">✕</button>
       <div class="debug-grid">
         <div class="debug-row">
           <span class="debug-label">视频分辨率</span>
@@ -1743,6 +1766,10 @@ class StreamSlot {
           <span class="debug-val" id="dbg-codecs-${this.slotId}">--</span>
         </div>
         <div class="debug-row">
+          <span class="debug-label">Session ID</span>
+          <span class="debug-val" id="dbg-session-${this.slotId}">--</span>
+        </div>
+        <div class="debug-row">
           <span class="debug-label">平台 / 主播</span>
           <span class="debug-val" id="dbg-streamer-${this.slotId}">--</span>
         </div>
@@ -1757,10 +1784,6 @@ class StreamSlot {
         <div class="debug-row">
           <span class="debug-label">CDN 节点</span>
           <span class="debug-val" id="dbg-cdn-${this.slotId}">--</span>
-        </div>
-        <div class="debug-row">
-          <span class="debug-label">Session ID</span>
-          <span class="debug-val" id="dbg-session-${this.slotId}">--</span>
         </div>
       </div>
     `;
@@ -1814,7 +1837,7 @@ class StreamSlot {
     }
   }
 
-  renderGaugeTicks(activeCount, totalCount = 28) {
+  renderGaugeTicks(activeCount, totalCount = 30) {
     let html = '';
     const clamped = Math.max(0, Math.min(totalCount, activeCount));
     for (let i = 0; i < totalCount; i++) {
@@ -1923,8 +1946,8 @@ class StreamSlot {
     const elGaugeBuf = this.debugCard.querySelector(`#dbg-gauge-buffer-${this.slotId}`);
     if (elBuf) elBuf.textContent = `${bufferSec.toFixed(1)} s`;
     if (elGaugeBuf) {
-      const activeBufTicks = Math.round((bufferSec / 15.0) * 28);
-      elGaugeBuf.innerHTML = this.renderGaugeTicks(activeBufTicks, 28);
+      const activeBufTicks = Math.round((bufferSec / 15.0) * 30);
+      elGaugeBuf.innerHTML = this.renderGaugeTicks(activeBufTicks, 30);
     }
 
     // 6. Latency
@@ -1933,8 +1956,8 @@ class StreamSlot {
     const elGaugeLat = this.debugCard.querySelector(`#dbg-gauge-latency-${this.slotId}`);
     if (elLat) elLat.textContent = `${latency.toFixed(1)} s`;
     if (elGaugeLat) {
-      const activeLatTicks = Math.round((latency / 15.0) * 28);
-      elGaugeLat.innerHTML = this.renderGaugeTicks(activeLatTicks, 28);
+      const activeLatTicks = Math.round((latency / 15.0) * 30);
+      elGaugeLat.innerHTML = this.renderGaugeTicks(activeLatTicks, 30);
     }
 
     // 7. Codecs
@@ -1943,7 +1966,13 @@ class StreamSlot {
     const elCodecs = this.debugCard.querySelector(`#dbg-codecs-${this.slotId}`);
     if (elCodecs) elCodecs.textContent = `${vCodec} / ${aCodec}`;
 
-    // 8. Platform & Streamer
+    // 8. Session ID
+    const elSession = this.debugCard.querySelector(`#dbg-session-${this.slotId}`);
+    if (elSession) {
+      elSession.textContent = this.sessionId;
+    }
+
+    // 8.5 Platform & Streamer
     const platform = (this.currentStreamData?.platform || 'soop').toUpperCase();
     const streamer = this.currentStreamData?.streamer || this.currentStreamData?.channelId || '--';
     const elStreamer = this.debugCard.querySelector(`#dbg-streamer-${this.slotId}`);
@@ -1963,9 +1992,9 @@ class StreamSlot {
     // 10. Broad Time & Duration
     const elTime = this.debugCard.querySelector(`#dbg-time-${this.slotId}`);
     if (elTime) {
-      let openTime = this.currentStreamData?.openTime;
-      if (!openTime && (this.currentStreamData?.openDate || this.currentStreamData?.liveOpenDate)) {
-        const raw = this.currentStreamData.openDate || this.currentStreamData.liveOpenDate;
+      let openTime = this.streamStartTime;
+      if (!openTime) {
+        const raw = this.currentStreamData?.openTime || this.currentStreamData?.openDate || this.currentStreamData?.liveOpenDate;
         if (typeof raw === 'number') {
           openTime = raw > 1e11 ? raw : raw * 1000;
         } else if (typeof raw === 'string') {
@@ -1973,10 +2002,9 @@ class StreamSlot {
           const tz = iso.includes('+') || iso.includes('Z') ? iso : `${iso}+09:00`;
           const t = new Date(tz).getTime();
           openTime = (!isNaN(t) && t > 0) ? t : (Date.parse(raw) || 0);
+        } else if (this.currentStreamData?.btime) {
+          openTime = Date.now() - this.currentStreamData.btime * 1000;
         }
-      }
-      if (!openTime && this.currentStreamData?.btime) {
-        openTime = Date.now() - this.currentStreamData.btime * 1000;
       }
       if (openTime && openTime > 0) {
         const d = new Date(openTime);
@@ -2000,21 +2028,7 @@ class StreamSlot {
     } catch (e) {}
     const elCdn = this.debugCard.querySelector(`#dbg-cdn-${this.slotId}`);
     if (elCdn) {
-      elCdn.textContent = `${cdnHost} (${this.selectedCdn || 'default'})`;
-    }
-
-    // 12. Session ID & Fragment SN
-    let sn = '--';
-    if (this.hls && curLevel?.details?.fragments && curLevel.details.fragments.length > 0) {
-      const curTime = this.video?.currentTime || 0;
-      const frag = curLevel.details.fragments.find((f) => f.start <= curTime && curTime <= (f.start + f.duration)) || curLevel.details.fragments[curLevel.details.fragments.length - 1];
-      if (frag && typeof frag.sn !== 'undefined') {
-        sn = String(frag.sn);
-      }
-    }
-    const elSession = this.debugCard.querySelector(`#dbg-session-${this.slotId}`);
-    if (elSession) {
-      elSession.textContent = `${this.sessionId} · sn ${sn}`;
+      elCdn.textContent = `${cdnHost} (${this.selectedCdn || 'global'})`;
     }
   }
 

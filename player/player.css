@@ -2726,22 +2726,22 @@ body.mode-standalone .stream-slot {
 }
 
 /* ===================================================================
-   视频专业统计信息面板 (Stats for Nerds / Debug Info - Chzzk & YouTube 风格)
+   视频专业统计信息面板 (Stats for Nerds / Debug Info - Chzzk 简约深色风格)
    =================================================================== */
 .slot-debug-card {
   position: absolute;
-  top: 10px;
-  left: 10px;
+  top: 12px;
+  left: 12px;
   z-index: 38;
-  background: rgba(13, 13, 16, 0.90);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
+  background: rgba(18, 18, 22, 0.92);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: var(--radius-sm);
-  padding: 12px 14px;
-  min-width: 320px;
+  border-radius: 8px;
+  padding: 14px 16px;
+  min-width: 340px;
   max-width: 440px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
   display: none;
   pointer-events: auto;
   user-select: text;
@@ -2751,32 +2751,18 @@ body.mode-standalone .stream-slot {
   display: block;
 }
 
-.debug-card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 8px;
-  padding-bottom: 6px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.debug-card-title {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--fg-secondary);
-  letter-spacing: 0.05em;
-}
-
 .btn-debug-close {
+  position: absolute;
+  top: 10px;
+  right: 12px;
   background: transparent;
   border: none;
   color: var(--fg-muted);
-  font-size: 12px;
+  font-size: 14px;
   cursor: pointer;
-  padding: 2px 5px;
+  padding: 2px 6px;
   line-height: 1;
-  border-radius: 2px;
+  border-radius: 4px;
   transition: color 0.15s, background-color 0.15s;
 }
 
@@ -2788,30 +2774,34 @@ body.mode-standalone .stream-slot {
 .debug-grid {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 7px;
+  margin-top: 2px;
 }
 
 .debug-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  font-size: 11px;
-  line-height: 1.35;
+  gap: 16px;
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .debug-label {
-  color: #9ca3af;
+  color: #8b8f9e;
   font-family: var(--font-sans);
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
-  font-size: 11px;
   flex-shrink: 0;
+  min-width: 72px;
 }
 
 .debug-val {
-  color: #f3f4f6;
+  color: #e4e4e7;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
   text-align: right;
   word-break: break-all;
 }
@@ -2819,10 +2809,16 @@ body.mode-standalone .stream-slot {
 .debug-meter-val {
   display: flex;
   align-items: center;
-  gap: 10px;
-  color: #f3f4f6;
+  gap: 12px;
+  color: #e4e4e7;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.debug-meter-val > span {
+  min-width: 44px;
+  text-align: right;
 }
 
 .debug-gauge {
@@ -2833,11 +2829,11 @@ body.mode-standalone .stream-slot {
 
 .debug-tick {
   width: 2px;
-  height: 9px;
-  background: #27272a;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.18);
   border-radius: 1px;
 }
 
 .debug-tick.active {
-  background: #10b981;
+  background: #00e599;
 }
