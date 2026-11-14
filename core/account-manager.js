@@ -119,13 +119,12 @@ export class AccountManager {
         }
       });
 
-      // 3. SOOP 直播解析与海外破限专有规则 (Rule 10003 & 10011: 注入韩国住宅 IP 破除海外区域锁并透传登录凭证)
+      // 3. SOOP 直播解析与播放鉴权专有规则 (Rule 10003 & 10011: 注入官方 Origin/Referer 与登录 Cookie)
+      // 严禁在此注入韩国住宅 IP 标头 (X-Forwarded-For 等)，否则 SOOP 会判定为韩国本土非 P2P 用户并强制锁死 540P 画质。
+      // 全球海外请求直连 GCP CDN 即可完整获取 1080p/1440p 全清晰度阶梯。
       const soopLiveHeaders = [
         { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
-        { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' },
-        { header: 'X-Forwarded-For', operation: 'set', value: '211.234.118.1' },
-        { header: 'Client-IP', operation: 'set', value: '211.234.118.1' },
-        { header: 'X-Real-IP', operation: 'set', value: '211.234.118.1' }
+        { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' }
       ];
       if (soopCookie) {
         soopLiveHeaders.push({ header: 'Cookie', operation: 'set', value: soopCookie });
@@ -159,22 +158,13 @@ export class AccountManager {
         }
       });
 
-      // Rule 10013: Chromecast auth endpoint - only Origin/Referer + mobile UA, NO Korean IP headers
-      // The CC auth key grants full quality ladder (1080p/1440p). Korean IP spoofing on this endpoint
-      // causes SOOP to enforce P2P restrictions, breaking the quality unlock.
-      const ccAuthHeaders = [
-        { header: 'Origin', operation: 'set', value: 'https://play.sooplive.com' },
-        { header: 'Referer', operation: 'set', value: 'https://play.sooplive.com/' }
-      ];
-      if (soopCookie) {
-        ccAuthHeaders.push({ header: 'Cookie', operation: 'set', value: soopCookie });
-      }
+      // Rule 10013: 移动端/CC 鉴权端点专有规则
       rulesToAdd.push({
         id: 10013,
         priority: 30,
         action: {
           type: 'modifyHeaders',
-          requestHeaders: ccAuthHeaders
+          requestHeaders: soopLiveHeaders
         },
         condition: {
           urlFilter: '/broad/a/watch',

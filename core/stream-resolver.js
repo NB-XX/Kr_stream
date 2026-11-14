@@ -251,69 +251,99 @@ export class StreamResolver {
       console.warn('[SOOP] 查询 Station API 降级:', e);
     }
 
-    // 第一步: 查询 live API (附带韩国住宅/机房 IP 标头与 geo_cc: KR，破除海外 IP / 区域锁限制)
+    // 第一步: 查询 live API (默认采用海外/全局纯净模式，直连 GCP CDN 解锁 1080p/1440p)
+    // 关键机制: SOOP 对韩国本土 IP 强制推行 P2P 网格策略，若未安装 P2P 插件则严厉限速 540P；
+    // 反之，海外/全局请求免除 P2P 限制，直接下发完整 1080p/1440p 全画质。
+    // 仅当遭遇极少数特定频道的版权海外锁 (RESULT=-2) 时，才使用韩国住宅 IP 破限重试。
     const endpoints = [
       `https://live.sooplive.co.kr/afreeca/player_live_api.php?bjid=${encodeURIComponent(cleanId)}`,
       `https://live.sooplive.com/afreeca/player_live_api.php?bjid=${encodeURIComponent(cleanId)}`
     ];
 
-    const geoCandidateIps = ['211.234.118.1', '121.134.0.1', '118.235.0.1'];
     let channel = null;
     let lastErr = null;
 
     for (const ep of endpoints) {
-      for (const ip of geoCandidateIps) {
-        try {
-          const body1 = new URLSearchParams({
-            bid: cleanId,
-            bno: bnoFromStation,
-            type: 'live',
-            pwd: '',
-            player_type: 'html5',
-            stream_type: 'common',
-            quality: 'HD',
-            mode: 'landing',
-            from_api: '0',
-            is_revive: 'false',
-            geo_cc: 'KR',
-            geo_rc: '',
-            acpt_lang: 'ko_KR',
-            svc_lang: 'ko_KR'
-          });
+      try {
+        const body1 = new URLSearchParams({
+          bid: cleanId,
+          bno: bnoFromStation,
+          type: 'live',
+          pwd: '',
+          player_type: 'html5',
+          stream_type: 'common',
+          quality: 'original',
+          mode: 'landing',
+          from_api: '0',
+          is_revive: 'false'
+        });
 
-          const res1 = await fetch(ep, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/x-www-form-urlencoded',
-              'Origin': 'https://play.sooplive.com',
-              'Referer': `https://play.sooplive.com/${cleanId}`,
-              'X-Forwarded-For': ip,
-              'Client-IP': ip,
-              'X-Real-IP': ip
-            },
-            body: body1.toString(),
-            credentials: 'omit'
-          });
+        const res1 = await fetch(ep, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Origin': 'https://play.sooplive.com',
+            'Referer': `https://play.sooplive.com/${cleanId}`
+          },
+          body: body1.toString(),
+          credentials: 'omit'
+        });
 
-          const data1 = await res1.json();
-          if (data1?.CHANNEL) {
-            if (data1.CHANNEL.RESULT === 1) {
-              channel = data1.CHANNEL;
-              break;
-            } else if (data1.CHANNEL.RESULT === -2) {
-              // 遭遇海外地区限制，使用韩国节点 IP 破限重试
-              console.warn(`[SOOP] 频道 ${cleanId} 遭遇海外地区限制 (RESULT=-2)，切换至韩国节点 ${ip} 进行破限重试...`);
-              continue;
-            } else {
-              channel = data1.CHANNEL;
-              break;
+        const data1 = await res1.json();
+        if (data1?.CHANNEL) {
+          if (data1.CHANNEL.RESULT === 1) {
+            channel = data1.CHANNEL;
+            break;
+          } else if (data1.CHANNEL.RESULT === -2) {
+            // 遭遇海外地区限制，仅针对此房间使用韩国节点 IP 进行破限重试
+            console.warn(`[SOOP] 频道 ${cleanId} 遭遇海外地区限制 (RESULT=-2)，切换至韩国住宅 IP 破限重试...`);
+            const geoCandidateIps = ['211.234.118.1', '121.134.0.1', '118.235.0.1'];
+            for (const ip of geoCandidateIps) {
+              try {
+                const bodyKr = new URLSearchParams({
+                  bid: cleanId,
+                  bno: bnoFromStation,
+                  type: 'live',
+                  pwd: '',
+                  player_type: 'html5',
+                  stream_type: 'common',
+                  quality: 'HD',
+                  mode: 'landing',
+                  from_api: '0',
+                  is_revive: 'false',
+                  geo_cc: 'KR',
+                  acpt_lang: 'ko_KR',
+                  svc_lang: 'ko_KR'
+                });
+                const resKr = await fetch(ep, {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'Origin': 'https://play.sooplive.com',
+                    'Referer': `https://play.sooplive.com/${cleanId}`,
+                    'X-Forwarded-For': ip,
+                    'Client-IP': ip,
+                    'X-Real-IP': ip
+                  },
+                  body: bodyKr.toString(),
+                  credentials: 'omit'
+                });
+                const dataKr = await resKr.json();
+                if (dataKr?.CHANNEL?.RESULT === 1) {
+                  channel = dataKr.CHANNEL;
+                  break;
+                }
+              } catch (_) {}
             }
+            if (channel) break;
+          } else {
+            channel = data1.CHANNEL;
+            break;
           }
-        } catch (err) {
-          lastErr = err;
         }
+      } catch (err) {
+        lastErr = err;
       }
-      if (channel && channel.RESULT === 1) break;
     }
 
     if (!channel) {
@@ -362,11 +392,44 @@ export class StreamResolver {
     }
 
     // 第二步: 获取播放鉴权 Token
-    // 优先从移动/OTT 端 (api.m.sooplive.com) 获取 chromecast_authentication_key，该 key 完全绕过 Web 端
-    // P2P 画质锁，可直接解锁 1080p/1440p 全清晰度阶梯。DNR Rule 10013 确保此端点不注入韩国 IP 头，
-    // 避免 SOOP 服务器将请求路由至国内 P2P CDN 策略节点，导致画质退化为 540P。
+    // 纯净海外模式下，SOOP Web 端请求 quality=original 即可签发包含 1080p/1440p 的全局 AID 凭证。
+    // 同时保留 Chromecast / OTT 移动端作为强力双重保障。
     let aid = null;
     let ccAuth = null;
+    let webAid = null;
+
+    // 2.1 优先请求全局 Web AID (无韩国 IP 污染，SOOP 分配 GCP CDN 全清晰度权限)
+    try {
+      const aidEp = endpoints[0];
+      const body2 = new URLSearchParams({
+        bid: cleanId,
+        bno: bno,
+        type: 'aid',
+        pwd: '',
+        player_type: 'html5',
+        stream_type: 'common',
+        quality: 'original',
+        mode: 'landing',
+        from_api: '0',
+        is_revive: 'false'
+      });
+
+      const res2 = await fetch(aidEp, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Origin': 'https://play.sooplive.com',
+          'Referer': `https://play.sooplive.com/${cleanId}`
+        },
+        body: body2.toString(),
+        credentials: 'omit'
+      });
+
+      const data2 = await res2.json().catch(() => null);
+      webAid = data2?.CHANNEL?.AID;
+    } catch (_) {}
+
+    // 2.2 同时/备用请求 OTT/Chromecast 鉴权 Key
     const watchEndpoints = [
       'https://api.m.sooplive.com/broad/a/watch',
       'https://api.m.sooplive.co.kr/broad/a/watch'
@@ -394,63 +457,16 @@ export class StreamResolver {
         });
         if (resWatch.ok) {
           const wdata = await resWatch.json().catch(() => null);
-          // 优先 chromecast_authentication_key，备用 hls_authentication_key (同等效果)
           const key = wdata?.data?.chromecast_authentication_key || wdata?.data?.hls_authentication_key;
           if (key) {
             ccAuth = key;
-            console.log(`[SOOP] CC auth acquired via ${wep.includes('.co.kr') ? '.co.kr' : '.com'}`);
             break;
           }
         }
-      } catch (e) {
-        console.warn('[SOOP] CC auth fetch failed:', e?.message);
-      }
-    }
-
-    if (!ccAuth) {
-      console.warn('[SOOP] CC auth not available, falling back to web AID (quality may be capped at 540P)');
-    }
-
-    // 若未获取到 Chromecast Auth Key，向 Web player_live_api.php 请求备用 Web AID
-    // 注意: Web AID 由 SOOP 服务器根据来源判断授权级别，KR IP + html5 player_type 下仍可能仅授权 540P
-    let webAid = null;
-    if (!ccAuth) {
-      try {
-        const aidEp = endpoints[0];
-        const body2 = new URLSearchParams({
-          bid: cleanId,
-          bno: bno,
-          type: 'aid',
-          pwd: '',
-          player_type: 'html5',
-          stream_type: 'common',
-          quality: targetQuality,
-          mode: 'landing',
-          from_api: '0',
-          is_revive: 'false',
-          geo_cc: 'KR'
-        });
-
-        const res2 = await fetch(aidEp, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Origin': 'https://play.sooplive.com',
-            'Referer': `https://play.sooplive.com/${cleanId}`,
-            'X-Forwarded-For': '211.234.118.1',
-            'Client-IP': '211.234.118.1',
-            'X-Real-IP': '211.234.118.1'
-          },
-          body: body2.toString(),
-          credentials: 'omit'
-        });
-
-        const data2 = await res2.json().catch(() => null);
-        webAid = data2?.CHANNEL?.AID;
       } catch (_) {}
     }
 
-    aid = ccAuth || webAid;
+    aid = webAid || ccAuth;
     if (!aid) {
       throw new Error('未能获取 SOOP 播放凭证 AID');
     }
@@ -464,10 +480,7 @@ export class StreamResolver {
         const resMaster = await fetch(masterAssignUrl, {
           headers: {
             'Origin': 'https://play.sooplive.com',
-            'Referer': `https://play.sooplive.com/${cleanId}`,
-            'X-Forwarded-For': '211.234.118.1',
-            'Client-IP': '211.234.118.1',
-            'X-Real-IP': '211.234.118.1'
+            'Referer': `https://play.sooplive.com/${cleanId}`
           },
           credentials: 'omit'
         });
@@ -485,10 +498,7 @@ export class StreamResolver {
       let res3 = await fetch(assignUrl, {
         headers: {
           'Origin': 'https://play.sooplive.com',
-          'Referer': `https://play.sooplive.com/${cleanId}`,
-          'X-Forwarded-For': '211.234.118.1',
-          'Client-IP': '211.234.118.1',
-          'X-Real-IP': '211.234.118.1'
+          'Referer': `https://play.sooplive.com/${cleanId}`
         },
         credentials: 'omit'
       });
@@ -503,10 +513,7 @@ export class StreamResolver {
         res3 = await fetch(assignUrl, {
           headers: {
             'Origin': 'https://play.sooplive.com',
-            'Referer': `https://play.sooplive.com/${cleanId}`,
-            'X-Forwarded-For': '211.234.118.1',
-            'Client-IP': '211.234.118.1',
-            'X-Real-IP': '211.234.118.1'
+            'Referer': `https://play.sooplive.com/${cleanId}`
           },
           credentials: 'omit'
         });

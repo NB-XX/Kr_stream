@@ -272,8 +272,8 @@ async function runTests() {
   assert(streamResolverCode.includes('chromecast_authentication_key'), 'StreamResolver must retrieve chromecast_authentication_key to bypass SOOP 540p throttling');
   assert(streamResolverCode.includes('hls_authentication_key'), 'StreamResolver must fall back to hls_authentication_key when CC key absent');
   assert(streamResolverCode.includes('api.m.sooplive.com/broad/a/watch'), 'StreamResolver must query api.m.sooplive.com watch endpoint');
-  assert(accountManagerCode.includes('10013'), 'AccountManager must register Rule 10013 for CC auth endpoint without Korean IP spoofing');
-  assert(!accountManagerCode.match(/id: 10013[\s\S]{0,300}X-Forwarded-For/), 'Rule 10013 must NOT inject Korean IP headers (X-Forwarded-For) to CC auth endpoint');
+  assert(!accountManagerCode.match(/soopLiveHeaders\s*=\s*\[[\s\S]{0,200}X-Forwarded-For/), 'soopLiveHeaders must NOT inject Korean IP headers (X-Forwarded-For) into standard requests');
+  assert(streamResolverCode.includes('RESULT === -2'), 'StreamResolver must only use Korean IP when RESULT === -2 (actual overseas region lock)');
   const bgCode = fs.readFileSync('background.js', 'utf8');
   assert(bgCode.includes('openTime'), 'background.js must forward openTime in openPlayerTab');
   const popupJsCode = fs.readFileSync('popup/popup.js', 'utf8');
