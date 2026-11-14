@@ -599,8 +599,9 @@ export class StreamResolver {
     const hasTimeMachine = Boolean(playbackObj?.live?.timeMachine || content.timeMachine);
 
     const mediaList = playbackObj?.media || [];
-    const targetMedia = mediaList.find((m) => m.mediaId === 'HLS') ||
-                        mediaList.find((m) => m.mediaId === 'LLHLS') ||
+    // 直播优先采用 LLHLS (Low Latency HLS)，延迟在 1.5s~3s，避免标准 HLS (10s targetduration) 出现 20s 延迟
+    const targetMedia = mediaList.find((m) => m.mediaId === 'LLHLS') ||
+                        mediaList.find((m) => m.mediaId === 'HLS') ||
                         mediaList[0];
 
     const streamUrl = targetMedia?.path;

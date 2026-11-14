@@ -46,6 +46,7 @@ class StreamSlot {
       ? parseFloat(initialData.safeCatchupDistance) 
       : (!isNaN(savedSafeLatency) && savedSafeLatency > 0 ? savedSafeLatency : 2.0);
     this.catchupMenu = null;
+    this.hasInitialLiveSynced = false;
 
     this.renderDom();
     this.subtitleEngine = new SubtitleEngine(this);
@@ -293,7 +294,7 @@ class StreamSlot {
         if (this.hls) {
           this.hls.config.maxBufferLength = 600;
           this.hls.config.maxMaxBufferLength = 600;
-          this.hls.config.liveMaxLatencyDurationCount = 300;
+          this.hls.config.liveMaxLatencyDuration = 600;
           this.hls.config.maxBufferSize = 500 * 1000 * 1000;
         }
       }
@@ -627,6 +628,7 @@ class StreamSlot {
     this.showLoading(`正在连接 ${streamer || channelId} 直播源...`);
     this.labelStreamer.textContent = streamer || channelId || '未知主播';
     this.isCatchReplayMode = false;
+    this.hasInitialLiveSynced = false;
     this.replayBar.classList.remove('active');
 
     if (streamData.safeCatchupDistance !== undefined) {
@@ -744,8 +746,8 @@ class StreamSlot {
         maxBufferLength: isReplay ? 60 : 30,
         maxMaxBufferLength: 600, // 暂停时支持扩展至 600 秒
         maxBufferSize: 60 * 1000 * 1000,
-        liveSyncDurationCount: 3.0,
-        liveMaxLatencyDurationCount: 8.0,
+        liveSyncDuration: 3.0, // 直接指定目标延迟秒数，避免 DurationCount 乘 Chzzk 10s 分片头产生 30s 初始巨大延迟
+        liveMaxLatencyDuration: 600, // 统一使用秒数 (600s/10分钟)，同时支持暂停长缓冲且不与 DurationCount 冲突
         xhrSetup: function (xhr) {
           xhr.withCredentials = false;
         }
@@ -790,10 +792,14 @@ class StreamSlot {
             this.replaySlider.max = Math.ceil(end);
             this.replayTotalDuration = end - start;
           }
-        } else if (!isReplay && data.details && this.video.currentTime === 0) {
+        } else if (!isReplay && data.details && !this.hasInitialLiveSynced) {
           const livePos = this.hls.liveSyncPosition;
           if (typeof livePos === 'number' && livePos > 0) {
             this.video.currentTime = livePos;
+            this.hasInitialLiveSynced = true;
+          } else if (typeof data.details.edge === 'number' && data.details.edge > 3.0) {
+            this.video.currentTime = Math.max(0, data.details.edge - 3.0);
+            this.hasInitialLiveSynced = true;
           }
         }
       });
@@ -829,12 +835,7 @@ class StreamSlot {
   getLiveEdgePosition() {
     if (!this.hls) return this.video?.currentTime || 0;
 
-    // 1. 尝试从 Hls.js liveSyncPosition 获取
-    if (typeof this.hls.liveSyncPosition === 'number' && this.hls.liveSyncPosition > 0) {
-      return this.hls.liveSyncPosition;
-    }
-
-    // 2. 尝试从 level details 获取 live edge
+    // 1. 优先从 level details 获取真实的直播最前端 (edge)
     const details = this.hls.levels?.[this.hls.currentLevel]?.details || this.hls.levels?.[0]?.details;
     if (details) {
       if (typeof details.edge === 'number' && details.edge > 0) {
@@ -848,11 +849,19 @@ class StreamSlot {
       }
     }
 
-    // 3. 尝试从 video.buffered 获取最远缓冲点
+    // 2. 尝试从 video.buffered 获取最远缓冲点
     if (this.video && this.video.buffered && this.video.buffered.length > 0) {
       const bufEnd = this.video.buffered.end(this.video.buffered.length - 1);
       if (bufEnd > 0) {
         return bufEnd;
+      }
+    }
+
+    // 3. 兜底从 latencyController.estimateLiveEdge 获取
+    if (this.hls.latencyController?.estimateLiveEdge) {
+      const est = this.hls.latencyController.estimateLiveEdge();
+      if (typeof est === 'number' && est > 0) {
+        return est;
       }
     }
 
@@ -1237,6 +1246,7 @@ class StreamSlot {
   // 从时光机返回实时直播
   returnToLive() {
     this.isCatchReplayMode = false;
+    this.hasInitialLiveSynced = false;
     this.replayBar.classList.remove('active');
 
     const platform = this.currentStreamData?.platform;

@@ -111,10 +111,12 @@ async function runTests() {
     maxBufferLength: 600,
     maxMaxBufferLength: 600,
     maxBufferSize: 600 * 1000 * 1000,
-    liveMaxLatencyDurationCount: 300
+    liveSyncDuration: 3.0,
+    liveMaxLatencyDuration: 600
   };
   assert.strictEqual(pauseHlsConfig.maxBufferLength, 600, 'Max buffer length must be 600s (10 min)');
-  assert.strictEqual(pauseHlsConfig.liveMaxLatencyDurationCount, 300, 'Live max latency duration count must tolerate 600s pause');
+  assert.strictEqual(pauseHlsConfig.liveSyncDuration, 3.0, 'Live sync duration is directly 3.0s (not multiplied by targetduration)');
+  assert.strictEqual(pauseHlsConfig.liveMaxLatencyDuration, 600, 'Live max latency duration must tolerate 600s pause');
   console.log('  Pass: 10-minute pause local buffer parameters verified.');
 
   console.log('[Test 5] Latency formatting & Pinning priority sorting');
