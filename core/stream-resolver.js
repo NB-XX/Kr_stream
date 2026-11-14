@@ -121,6 +121,22 @@ export class StreamResolver {
       throw new Error('无法识别输入内容，请输入正确的直播间链接或主播ID');
     }
 
+    if (parsed.isDirectHls && parsed.streamUrl) {
+      return {
+        platform: parsed.platform || 'soop',
+        channelId: 'custom',
+        streamer: parsed.platform === 'soop' ? 'SOOP 独立直播流' : '自定义直播流',
+        title: 'M3U8 直链播放',
+        isLive: true,
+        hasTimeMachine: false,
+        streamUrl: parsed.streamUrl,
+        originalStreamUrl: parsed.streamUrl,
+        selectedCdn: 'original',
+        availableCdns: [],
+        openTime: Date.now()
+      };
+    }
+
     const mergedOptions = { ...options };
     if (parsed.broadNo && !mergedOptions.broadNo) {
       mergedOptions.broadNo = parsed.broadNo;
@@ -141,6 +157,20 @@ export class StreamResolver {
   static parseInput(input) {
     if (!input || typeof input !== 'string') return null;
     const str = input.trim();
+
+    // 0. 直接 M3U8 直链匹配 (支持直接输入 HLS 直播流或回放流地址播放)
+    if (/^https?:\/\/.*\.m3u8(?:\?.*)?$/i.test(str)) {
+      const isSoop = str.includes('sooplive') || str.includes('afreecatv');
+      const isChzzk = str.includes('chzzk') || str.includes('naver');
+      const isCime = str.includes('live-video.net') || str.includes('ci.me');
+      const platform = isSoop ? 'soop' : isChzzk ? 'chzzk' : isCime ? 'cime' : 'soop';
+      return {
+        platform: platform,
+        id: 'Direct Stream',
+        streamUrl: str,
+        isDirectHls: true
+      };
+    }
 
     // 1. SOOP 匹配 (支持 play.sooplive.com/id, play.sooplive.com/id/12345678, sooplive.co.kr/id 等格式)
     const soopMatch = str.match(/(?:play\.)?(?:sooplive\.(?:com|co\.kr)|afreecatv\.com)\/([a-zA-Z0-9_]+)(?:\/([0-9]+))?/i);

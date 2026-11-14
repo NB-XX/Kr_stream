@@ -277,6 +277,7 @@ async function runTests() {
   assert(popupJsCode.includes('openTime: currentResolvedData.openTime'), 'popup.js must pass openTime to OPEN_PLAYER');
   assert(playerCssCode.includes('.debug-label {'), 'Debug card label CSS must exist');
   assert(playerCssCode.includes('text-align: left;'), 'Debug card values and labels must be left-aligned matching Chzzk visual layout');
+  assert(streamResolverCode.includes('isDirectHls'), 'StreamResolver must support direct M3U8 stream input');
   console.log('  Pass: Chromecast auth 1080p master playlist, metadata propagation, and 2-column Debug Info verified.');
 
   console.log('\nAll integration tests passed successfully.');
