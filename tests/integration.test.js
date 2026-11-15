@@ -290,6 +290,41 @@ async function runTests() {
   assert(playerCssCode.includes('.vol-slider {'), 'vol-slider CSS styles must exist');
   console.log('  Pass: Volume control 0~200% range and wheel tuning verified.');
 
+  console.log('[Test 15] Danmaku Lifecycle Fix, SOOP Room Stickers (0109), and Member Color Customization');
+  const danmakuEngineCode = fs.readFileSync('player/danmaku-engine.js', 'utf8');
+
+  // 1. Danmaku disappearing bug fix: _cleanupTimer cleared on recycle, listeners removed, maxOnScreen increased
+  assert(danmakuEngineCode.includes('this.maxOnScreen = 150'), 'maxOnScreen must be increased to at least 150 to avoid premature mid-flight recycling');
+  assert(danmakuEngineCode.includes('danmakuEl._cleanupTimer = setTimeout'), 'DanmakuEngine must track _cleanupTimer on elements');
+  assert(danmakuEngineCode.includes('clearTimeout(el._cleanupTimer)'), 'recycleDanmakuElement must clear _cleanupTimer to prevent reusing elements with active timeouts');
+  assert(danmakuEngineCode.includes('el.removeEventListener(\'animationend\', el._onAnimEnd)'), 'recycleDanmakuElement must clean up animationend listener');
+  assert(danmakuEngineCode.includes('dynamicDuration'), 'DanmakuEngine must calculate dynamic flight duration based on text length');
+
+  // 2. SOOP room custom stickers / OGQ stickers (opcode 0109)
+  assert(danmakuEngineCode.includes("opcode === '0109'"), 'DanmakuEngine must handle SOOP opcode 0109 for room custom stickers');
+  assert(danmakuEngineCode.includes('ogq-sticker-global-cdn-z01.sooplive.com'), 'DanmakuEngine must generate SOOP OGQ sticker CDN URL');
+  assert(danmakuEngineCode.includes('danmaku-sticker'), 'DanmakuEngine must add danmaku-sticker class for room stickers');
+  assert(playerCssCode.includes('.danmaku-item .danmaku-sticker'), 'player.css must define sizing for room custom stickers');
+
+  // 3. Member danmaku detection for SOOP and Chzzk
+  assert(danmakuEngineCode.includes('(flag2 & (1 << 18)) !== 0'), 'SOOP member check must test tier bitflags');
+  assert(danmakuEngineCode.includes("platform: 'soop'"), 'SOOP chat must identify platform as soop');
+  assert(danmakuEngineCode.includes("platform: 'chzzk'"), 'Chzzk chat must identify platform as chzzk');
+  assert(danmakuEngineCode.includes('activityBadges'), 'Chzzk chat must detect member from activityBadges');
+  assert(danmakuEngineCode.includes('danmaku-member-soop'), 'DanmakuEngine must attach danmaku-member-soop class');
+  assert(danmakuEngineCode.includes('danmaku-member-chzzk'), 'DanmakuEngine must attach danmaku-member-chzzk class');
+
+  // 4. Color presets and settings menu controls
+  assert(danmakuEngineCode.includes('soopMemberColor'), 'DanmakuEngine must store soopMemberColor');
+  assert(danmakuEngineCode.includes('chzzkMemberColor'), 'DanmakuEngine must store chzzkMemberColor');
+  assert(danmakuEngineCode.includes('#339af0'), 'SOOP default member color must be blue (#339af0)');
+  assert(danmakuEngineCode.includes('#51cf66'), 'Chzzk default member color must be grass green (#51cf66)');
+  assert(danmakuEngineCode.includes('danmaku-soop-color-opts'), 'Settings menu must include SOOP member color controls');
+  assert(danmakuEngineCode.includes('danmaku-chzzk-color-opts'), 'Settings menu must include Chzzk member color controls');
+  assert(playerCssCode.includes('.danmaku-member-soop'), 'player.css must style SOOP member danmaku');
+  assert(playerCssCode.includes('.danmaku-member-chzzk'), 'player.css must style Chzzk member danmaku');
+  console.log('  Pass: Danmaku lifecycle, SOOP room stickers, and platform member colors verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

@@ -12,6 +12,10 @@ export class DanmakuEngine {
     this.speed = 6.5; // 默认 6.5 秒飞过全屏
     this.screenArea = 0.8; // 默认占用屏幕上方 80%，避让底部字幕
     
+    // 会员与粉丝弹幕颜色 (SOOP: 默认蓝色, Chzzk: 默认草绿色)
+    this.soopMemberColor = this.loadStoredColor('krstream_danmaku_soop_color', '#339af0');
+    this.chzzkMemberColor = this.loadStoredColor('krstream_danmaku_chzzk_color', '#51cf66');
+
     // 网络与连接
     this.activeSocket = null;
     this.pingTimer = null;
@@ -30,7 +34,7 @@ export class DanmakuEngine {
     this.tracks = []; // 记录每个轨道的可用时间戳 (ms)
 
     // 高并发保护与 DOM 对象池 (防止万人直播间弹幕风暴造成卡顿与内存溢出)
-    this.maxOnScreen = 50; // 同屏弹幕上限，超额平滑丢弃普通弹幕
+    this.maxOnScreen = 150; // 同屏弹幕上限，超额平滑丢弃普通弹幕
     this.domPool = []; // DOM 对象池复用，杜绝频繁 GC 抖动
 
     // DOM 引用
@@ -39,6 +43,23 @@ export class DanmakuEngine {
     this.menuEl = null;
 
     this.initUI();
+  }
+
+  loadStoredColor(key, defaultVal) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage && typeof window.localStorage.getItem === 'function') {
+        return window.localStorage.getItem(key) || defaultVal;
+      }
+    } catch (e) {}
+    return defaultVal;
+  }
+
+  saveStoredColor(key, val) {
+    try {
+      if (typeof window !== 'undefined' && window.localStorage && typeof window.localStorage.setItem === 'function') {
+        window.localStorage.setItem(key, val);
+      }
+    } catch (e) {}
   }
 
   initUI() {
@@ -135,8 +156,44 @@ export class DanmakuEngine {
           <button class="sub-opt-btn ${this.screenArea === 1.0 ? 'active' : ''}" data-val="1.0">全屏 (100%)</button>
         </div>
       </div>
+      <div class="sub-menu-group">
+        <label class="sub-group-label">SOOP 会员弹幕颜色:</label>
+        <div class="sub-options danmaku-color-opts" id="danmaku-soop-color-opts-${this.slot.slotId}">
+          <button class="sub-opt-btn color-preset-btn ${this.soopMemberColor === '#339af0' ? 'active' : ''}" data-val="#339af0">
+            <span class="color-dot" style="background:#339af0;"></span>经典蓝
+          </button>
+          <button class="sub-opt-btn color-preset-btn ${this.soopMemberColor === '#38bdf8' ? 'active' : ''}" data-val="#38bdf8">
+            <span class="color-dot" style="background:#38bdf8;"></span>天蓝
+          </button>
+          <button class="sub-opt-btn color-preset-btn ${this.soopMemberColor === '#4dabf7' ? 'active' : ''}" data-val="#4dabf7">
+            <span class="color-dot" style="background:#4dabf7;"></span>亮蓝
+          </button>
+          <label class="sub-opt-btn color-picker-btn" title="自定义颜色">
+            <span class="color-dot custom-dot" id="danmaku-soop-dot-${this.slot.slotId}" style="background:${this.soopMemberColor};"></span>自定
+            <input type="color" class="danmaku-color-input" id="danmaku-soop-custom-${this.slot.slotId}" value="${this.soopMemberColor}" />
+          </label>
+        </div>
+      </div>
+      <div class="sub-menu-group">
+        <label class="sub-group-label">Chzzk 粉丝弹幕颜色:</label>
+        <div class="sub-options danmaku-color-opts" id="danmaku-chzzk-color-opts-${this.slot.slotId}">
+          <button class="sub-opt-btn color-preset-btn ${this.chzzkMemberColor === '#51cf66' ? 'active' : ''}" data-val="#51cf66">
+            <span class="color-dot" style="background:#51cf66;"></span>草绿
+          </button>
+          <button class="sub-opt-btn color-preset-btn ${this.chzzkMemberColor === '#70c14a' ? 'active' : ''}" data-val="#70c14a">
+            <span class="color-dot" style="background:#70c14a;"></span>青草
+          </button>
+          <button class="sub-opt-btn color-preset-btn ${this.chzzkMemberColor === '#94d82d' ? 'active' : ''}" data-val="#94d82d">
+            <span class="color-dot" style="background:#94d82d;"></span>嫩绿
+          </button>
+          <label class="sub-opt-btn color-picker-btn" title="自定义颜色">
+            <span class="color-dot custom-dot" id="danmaku-chzzk-dot-${this.slot.slotId}" style="background:${this.chzzkMemberColor};"></span>自定
+            <input type="color" class="danmaku-color-input" id="danmaku-chzzk-custom-${this.slot.slotId}" value="${this.chzzkMemberColor}" />
+          </label>
+        </div>
+      </div>
       <div class="sub-menu-tip">
-        采用 GPU 硬件加速平滑滚动，已针对 SOOP / Chzzk 自动防重叠分轨。
+        GPU 硬件加速与防抖动分轨，SOOP/Chzzk 会员粉丝弹幕独立色彩高亮。
       </div>
     `;
 
@@ -161,6 +218,78 @@ export class DanmakuEngine {
     bindOpts('danmaku-speed-opts', (v) => { this.speed = v; });
     bindOpts('danmaku-area-opts', (v) => { this.screenArea = v; });
 
+    // 绑定 SOOP 会员颜色选择
+    const soopColorContainer = menu.querySelector(`#danmaku-soop-color-opts-${this.slot.slotId}`);
+    const soopCustomInput = menu.querySelector(`#danmaku-soop-custom-${this.slot.slotId}`);
+    const soopDot = menu.querySelector(`#danmaku-soop-dot-${this.slot.slotId}`);
+
+    const applySoopColor = (color) => {
+      this.soopMemberColor = color;
+      this.saveStoredColor('krstream_danmaku_soop_color', color);
+      if (soopCustomInput) soopCustomInput.value = color;
+      if (soopDot) soopDot.style.background = color;
+      if (soopColorContainer) {
+        soopColorContainer.querySelectorAll('.color-preset-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.val.toLowerCase() === color.toLowerCase());
+        });
+      }
+      if (this.containerEl) {
+        this.containerEl.querySelectorAll('.danmaku-member-soop').forEach(el => {
+          el.style.color = color;
+        });
+      }
+    };
+
+    soopColorContainer?.querySelectorAll('.color-preset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applySoopColor(btn.dataset.val);
+      });
+    });
+
+    soopCustomInput?.addEventListener('input', (e) => {
+      applySoopColor(e.target.value);
+    });
+    soopCustomInput?.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
+    // 绑定 Chzzk 粉丝颜色选择
+    const chzzkColorContainer = menu.querySelector(`#danmaku-chzzk-color-opts-${this.slot.slotId}`);
+    const chzzkCustomInput = menu.querySelector(`#danmaku-chzzk-custom-${this.slot.slotId}`);
+    const chzzkDot = menu.querySelector(`#danmaku-chzzk-dot-${this.slot.slotId}`);
+
+    const applyChzzkColor = (color) => {
+      this.chzzkMemberColor = color;
+      this.saveStoredColor('krstream_danmaku_chzzk_color', color);
+      if (chzzkCustomInput) chzzkCustomInput.value = color;
+      if (chzzkDot) chzzkDot.style.background = color;
+      if (chzzkColorContainer) {
+        chzzkColorContainer.querySelectorAll('.color-preset-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.val.toLowerCase() === color.toLowerCase());
+        });
+      }
+      if (this.containerEl) {
+        this.containerEl.querySelectorAll('.danmaku-member-chzzk').forEach(el => {
+          el.style.color = color;
+        });
+      }
+    };
+
+    chzzkColorContainer?.querySelectorAll('.color-preset-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        applyChzzkColor(btn.dataset.val);
+      });
+    });
+
+    chzzkCustomInput?.addEventListener('input', (e) => {
+      applyChzzkColor(e.target.value);
+    });
+    chzzkCustomInput?.addEventListener('click', (e) => {
+      e.stopPropagation();
+    });
+
     document.addEventListener('click', (e) => {
       if (this.menuEl && !this.menuEl.contains(e.target) && e.target !== this.btnEl) {
         this.menuEl.classList.remove('active');
@@ -171,8 +300,8 @@ export class DanmakuEngine {
   showSettingsMenu(x = null, y = null) {
     if (!this.menuEl) return;
     if (x !== null && y !== null) {
-      const menuWidth = 250;
-      const menuHeight = 280;
+      const menuWidth = 260;
+      const menuHeight = 420;
       const left = Math.min(window.innerWidth - menuWidth - 10, Math.max(10, x));
       const top = Math.min(window.innerHeight - menuHeight - 10, Math.max(10, y - menuHeight));
       this.menuEl.style.left = `${left}px`;
@@ -270,6 +399,10 @@ export class DanmakuEngine {
     this.isConnected = false;
     this.tracks = [];
     if (this.containerEl) {
+      const children = Array.from(this.containerEl.children);
+      for (const child of children) {
+        this.recycleDanmakuElement(child);
+      }
       this.containerEl.innerHTML = '';
     }
   }
@@ -453,12 +586,58 @@ export class DanmakuEngine {
           }
 
           if (opcode === '0005') {
-            // 收到用户弹幕
-            const parts = payload.split(SEPARATOR);
-            const comment = parts[1];
-            const user = parts[6] || parts[2] || '';
+            // 收到用户文本弹幕
+            const rawParts = payload.split(SEPARATOR);
+            const parts = rawParts[0] === '' ? rawParts.slice(1) : rawParts;
+            const comment = parts[0] ? parts[0].replace(/\r/gi, '') : '';
+            const user = parts[5] || parts[1] || '观众';
+            const flag = parts[6] || '';
+            const subMonth = Number(parts[7]) || 0;
+            const accSubMonth = Number(parts[10]) || 0;
+            const flagParts = String(flag).split('|');
+            const flag2 = Number(flagParts[1]) || 0;
+            // Tier 1 (18), Tier 2 (19), Tier 3 (20) 订阅或会员月数 > 0
+            const isTier = ((flag2 & (1 << 18)) !== 0) || ((flag2 & (1 << 19)) !== 0) || ((flag2 & (1 << 20)) !== 0);
+            const isMember = isTier || subMonth > 0 || accSubMonth > 0;
+
             if (comment) {
-              this.addDanmaku(comment, user);
+              this.addDanmaku(comment, user, { isMember, platform: 'soop' });
+            }
+          }
+
+          if (opcode === '0109') {
+            // 收到 SOOP 房间自定义表情贴纸 / OGQ 贴纸 (SVC_OGQ_EMOTICON)
+            const rawParts = payload.split(SEPARATOR);
+            const parts = rawParts[0] === '' ? rawParts.slice(1) : rawParts;
+            const comment = parts[1] ? parts[1].replace(/\r/gi, '') : '';
+            const ogqId = parts[2] || '';
+            const ogqNumber = parts[3] || '1';
+            const senderId = parts[5] || '';
+            const user = parts[6] || senderId || '观众';
+            const flag = parts[7] || '';
+            const szExt = parts[11] || 'png';
+            const subMonth = Number(parts[12]) || 0;
+            const accSubMonth = Number(parts[15]) || 0;
+
+            const flagParts = String(flag).split('|');
+            const flag2 = Number(flagParts[1]) || 0;
+            const isTier = ((flag2 & (1 << 18)) !== 0) || ((flag2 & (1 << 19)) !== 0) || ((flag2 & (1 << 20)) !== 0);
+            const isMember = isTier || subMonth > 0 || accSubMonth > 0;
+
+            if (ogqId) {
+              const ext = szExt || 'png';
+              const stickerUrl = `https://ogq-sticker-global-cdn-z01.sooplive.com/sticker/${ogqId}/${ogqNumber}.${ext}`;
+              const fallbackUrl = `https://ogq-sticker-global-cdn-z01.afreecatv.com/sticker/${ogqId}/${ogqNumber}.${ext}`;
+              const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+              const cleanComment = comment ? escapeHtml(comment.trim()) : '';
+              const stickerHtml = `<img class="danmaku-emoji danmaku-sticker" src="${stickerUrl}" alt="sticker" onerror="this.onerror=null;this.src='${fallbackUrl}';" />`;
+              const fullHtml = cleanComment ? `${cleanComment} ${stickerHtml}` : stickerHtml;
+
+              this.addDanmaku(fullHtml, user, {
+                isMember,
+                platform: 'soop',
+                isRawHtml: true
+              });
             }
           }
 
@@ -776,12 +955,41 @@ export class DanmakuEngine {
             for (const item of bdy) {
               const msgText = item.msg || '';
               let nick = '观众';
+              let prof = null;
               try {
                 if (item.profile) {
-                  const prof = typeof item.profile === 'string' ? JSON.parse(item.profile) : item.profile;
-                  nick = prof.nickname || nick;
+                  prof = typeof item.profile === 'string' ? JSON.parse(item.profile) : item.profile;
+                  nick = prof?.nickname || nick;
                 }
               } catch (e) {}
+
+              let extras = null;
+              try {
+                if (item.extras) {
+                  extras = typeof item.extras === 'string' ? JSON.parse(item.extras) : (item.extras || {});
+                }
+              } catch (e) {}
+
+              // 检测 Chzzk 粉丝 / 订阅会员 / 房管
+              let isMember = false;
+              if (prof) {
+                const isManager = prof.userRoleCode && prof.userRoleCode !== 'common_user';
+                const hasSubProp = Boolean(prof.streamingProperty?.subscription || extras?.streamingProperty?.subscription);
+                const hasSubBadge = Boolean(
+                  prof.activityBadges?.some(b => {
+                    const bid = String(b.badgeId || '').toLowerCase();
+                    const img = String(b.imageUrl || '').toLowerCase();
+                    return bid.includes('sub') || bid.includes('fan') || bid.includes('donation') || img.includes('fan_') || img.includes('sub_');
+                  }) ||
+                  prof.viewerBadges?.some(vb => {
+                    const bid = String(vb.badge?.badgeId || '').toLowerCase();
+                    const img = String(vb.badge?.imageUrl || '').toLowerCase();
+                    return (vb.badge?.scope === 'CHANNEL' && (bid.includes('fan') || bid.includes('sub') || bid.includes('donation'))) ||
+                           img.includes('fan_') || img.includes('sub_');
+                  })
+                );
+                isMember = Boolean(isManager || hasSubProp || hasSubBadge);
+              }
 
               // 提取并解析表情包映射 (Chzzk 专属表情与订阅表情)
               let emojis = item.emojis || {};
@@ -790,15 +998,14 @@ export class DanmakuEngine {
               }
               if (!emojis || Object.keys(emojis).length === 0) {
                 try {
-                  const extras = typeof item.extras === 'string' ? JSON.parse(item.extras) : (item.extras || {});
-                  if (extras.emojis) {
+                  if (extras?.emojis) {
                     emojis = typeof extras.emojis === 'string' ? JSON.parse(extras.emojis) : extras.emojis;
                   }
                 } catch (e) {}
               }
 
               if (msgText) {
-                this.addDanmaku(msgText, nick, { emojis });
+                this.addDanmaku(msgText, nick, { emojis, isMember, platform: 'chzzk' });
               }
             }
           }
@@ -865,14 +1072,16 @@ export class DanmakuEngine {
     const cleanText = String(text).trim();
     if (!cleanText) return;
 
-    // 0. 高并发超额保护 (优先保留主播发言与醒目弹幕，普通弹幕超额平滑丢弃，保障 60 FPS 流畅度)
+    // 0. 高并发超额保护 (优先保留主播发言、高亮与会员弹幕，普通弹幕超额平滑丢弃，杜绝截断正在飞行的弹幕)
     if (this.containerEl.childElementCount >= this.maxOnScreen) {
-      if (!options.isSpeaker && !options.isHighlight) {
-        return;
+      if (!options.isSpeaker && !options.isHighlight && !options.isMember) {
+        return; // 平滑丢弃新到普通弹幕
       }
-      const oldest = this.containerEl.querySelector('.danmaku-item:not(.danmaku-speaker)');
-      if (oldest) {
-        this.recycleDanmakuElement(oldest);
+      if (this.containerEl.childElementCount >= this.maxOnScreen + 30) {
+        const oldest = this.containerEl.querySelector('.danmaku-item:not(.danmaku-speaker)');
+        if (oldest) {
+          this.recycleDanmakuElement(oldest);
+        }
       }
     }
 
@@ -900,32 +1109,34 @@ export class DanmakuEngine {
 
     // 2. 解析表情占位符并渲染为 <img> 图标
     const escapeHtml = (s) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-    let renderedHtml = escapeHtml(cleanText);
+    let renderedHtml = options.isRawHtml ? cleanText : escapeHtml(cleanText);
 
-    // 解析 Chzzk / 通用表情代码: {:emoticon_id:}
-    const tokenRegex = /\{:([a-zA-Z0-9_-]+):\}/g;
-    renderedHtml = renderedHtml.replace(tokenRegex, (match, code) => {
-      const url = (options.emojis && options.emojis[code]) || this.emojiCache.get(code);
-      if (url) {
-        return `<img class="danmaku-emoji" src="${url}" alt="${code}" />`;
-      }
-      // 通用 CDN 兜底，若加载失败自动回滚为原代码
-      const fallbackUrl = `https://ssl.pstatic.net/static/nng/glive/icon/${code}.gif`;
-      return `<img class="danmaku-emoji" src="${fallbackUrl}" alt="${code}" onerror="this.outerHTML='${match}';" />`;
-    });
+    if (!options.isRawHtml) {
+      // 解析 Chzzk / 通用表情代码: {:emoticon_id:}
+      const tokenRegex = /\{:([a-zA-Z0-9_-]+):\}/g;
+      renderedHtml = renderedHtml.replace(tokenRegex, (match, code) => {
+        const url = (options.emojis && options.emojis[code]) || this.emojiCache.get(code);
+        if (url) {
+          return `<img class="danmaku-emoji" src="${url}" alt="${code}" />`;
+        }
+        // 通用 CDN 兜底，若加载失败自动回滚为原代码
+        const fallbackUrl = `https://ssl.pstatic.net/static/nng/glive/icon/${code}.gif`;
+        return `<img class="danmaku-emoji" src="${fallbackUrl}" alt="${code}" onerror="this.outerHTML='${match}';" />`;
+      });
 
-    // 解析 SOOP 传统斜杠表情: /샤방/、/품어/ 等
-    const slashRegex = /\/([가-힣a-zA-Z0-9_]{1,10})\//g;
-    renderedHtml = renderedHtml.replace(slashRegex, (match, word) => {
-      const url = this.emojiCache.get(word) || this.emojiCache.get(match);
-      if (url) {
-        return `<img class="danmaku-emoji" src="${url}" alt="${word}" />`;
-      }
-      return match;
-    });
+      // 解析 SOOP 传统斜杠表情与房间签名表情: /샤방/、/품어/ 等
+      const slashRegex = /\/([^\/\s]{1,30})\//g;
+      renderedHtml = renderedHtml.replace(slashRegex, (match, word) => {
+        const url = this.emojiCache.get(word) || this.emojiCache.get(match);
+        if (url) {
+          return `<img class="danmaku-emoji" src="${url}" alt="${word}" />`;
+        }
+        return match;
+      });
+    }
 
     // 估算可视长度 (每个表情约占 2 个汉字宽度，确保弹幕平滑飞过不重叠)
-    const charLen = cleanText.replace(/\{:[^:]+:\}/g, '  ').replace(/\/([^\/]+)\//g, '  ').length;
+    const charLen = cleanText.replace(/<[^>]+>/g, '  ').replace(/\{:[^:]+:\}/g, '  ').replace(/\/([^\/]+)\//g, '  ').length;
 
     const containerHeight = this.containerEl.clientHeight || 360;
     const trackHeight = this.fontSize + 10;
@@ -968,25 +1179,43 @@ export class DanmakuEngine {
       danmakuEl.classList.add('danmaku-speaker');
     }
 
+    // 会员与粉丝弹幕着色 (SOOP 蓝色, Chzzk 草绿色)
+    if (options.isMember) {
+      danmakuEl.classList.add('danmaku-member');
+      if (options.platform === 'soop') {
+        danmakuEl.classList.add('danmaku-member-soop');
+        danmakuEl.style.color = this.soopMemberColor || '#339af0';
+      } else if (options.platform === 'chzzk') {
+        danmakuEl.classList.add('danmaku-member-chzzk');
+        danmakuEl.style.color = this.chzzkMemberColor || '#51cf66';
+      }
+    }
+
     danmakuEl.style.top = `${topPos}px`;
     danmakuEl.style.fontSize = `${this.fontSize}px`;
     danmakuEl.style.opacity = `${this.opacity}`;
-    danmakuEl.style.animationDuration = `${this.speed}s`;
+
+    // 动态持续时间：基础速度 + 超长弹幕适度延长，保证阅读舒适度与不超速
+    const dynamicDuration = Math.max(this.speed, this.speed + (charLen > 15 ? (charLen - 15) * 0.08 : 0));
+    danmakuEl.style.animationDuration = `${dynamicDuration}s`;
     danmakuEl.innerHTML = renderedHtml;
 
     this.containerEl.appendChild(danmakuEl);
 
     // 动画结束后归还至对象池复用，杜绝 DOM 膨胀与 GC 暂停
-    danmakuEl.addEventListener('animationend', () => {
+    const onAnimEnd = () => {
       this.recycleDanmakuElement(danmakuEl);
-    }, { once: true });
+    };
+    danmakuEl._onAnimEnd = onAnimEnd;
+    danmakuEl.addEventListener('animationend', onAnimEnd, { once: true });
 
-    // 兜底超时清理
-    setTimeout(() => {
+    // 兜底超时清理 (预留足够安全余量，记录 timer ID 防止复用元素被意外截断)
+    danmakuEl._cleanupTimer = setTimeout(() => {
+      danmakuEl._cleanupTimer = null;
       if (danmakuEl.parentNode) {
         this.recycleDanmakuElement(danmakuEl);
       }
-    }, (this.speed + 1) * 1000);
+    }, (dynamicDuration + 2.5) * 1000);
   }
 
   // DOM 对象池：获取可用节点
@@ -994,6 +1223,14 @@ export class DanmakuEngine {
     const ownerDoc = this.containerEl?.ownerDocument || document;
     if (this.domPool.length > 0) {
       const el = this.domPool.pop();
+      if (el._cleanupTimer) {
+        clearTimeout(el._cleanupTimer);
+        el._cleanupTimer = null;
+      }
+      if (el._onAnimEnd) {
+        el.removeEventListener('animationend', el._onAnimEnd);
+        el._onAnimEnd = null;
+      }
       el.className = 'danmaku-item';
       el.style.cssText = '';
       return el;
@@ -1004,6 +1241,14 @@ export class DanmakuEngine {
   // DOM 对象池：回收节点并重置状态
   recycleDanmakuElement(el) {
     if (!el) return;
+    if (el._cleanupTimer) {
+      clearTimeout(el._cleanupTimer);
+      el._cleanupTimer = null;
+    }
+    if (el._onAnimEnd) {
+      el.removeEventListener('animationend', el._onAnimEnd);
+      el._onAnimEnd = null;
+    }
     if (el.parentNode) {
       el.remove();
     }
@@ -1011,7 +1256,7 @@ export class DanmakuEngine {
     el.innerHTML = '';
     el.className = 'danmaku-item';
     el.style.cssText = '';
-    if (this.domPool.length < 60) {
+    if (this.domPool.length < 80) {
       this.domPool.push(el);
     }
   }
@@ -1023,11 +1268,22 @@ export class DanmakuEngine {
       this.menuEl = null;
     }
     if (this.containerEl) {
-      while (this.containerEl.firstChild) {
-        this.containerEl.removeChild(this.containerEl.firstChild);
+      const children = Array.from(this.containerEl.children);
+      for (const child of children) {
+        this.recycleDanmakuElement(child);
       }
       this.containerEl.remove();
       this.containerEl = null;
+    }
+    for (const el of this.domPool) {
+      if (el._cleanupTimer) {
+        clearTimeout(el._cleanupTimer);
+        el._cleanupTimer = null;
+      }
+      if (el._onAnimEnd) {
+        el.removeEventListener('animationend', el._onAnimEnd);
+        el._onAnimEnd = null;
+      }
     }
     this.domPool = [];
   }
