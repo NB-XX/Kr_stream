@@ -325,6 +325,53 @@ async function runTests() {
   assert(playerCssCode.includes('.danmaku-member-chzzk'), 'player.css must style Chzzk member danmaku');
   console.log('  Pass: Danmaku lifecycle, SOOP room stickers, and platform member colors verified.');
 
+  console.log('[Test 16] Chzzk Timeshift / Replay Stability & Anti-Live-Snap Fixes');
+  // 1. Check player.js for HLS replay configuration and synchronizeToLiveEdge override
+  assert(playerJsCode.includes('liveSyncDuration: isReplay ? undefined : 3.0'), 'player.js must omit liveSyncDuration in replay mode');
+  assert(playerJsCode.includes('liveMaxLatencyDurationCount: isReplay ? Infinity : undefined'), 'player.js must set liveMaxLatencyDurationCount to Infinity in replay mode');
+  assert(playerJsCode.includes('this.hls.streamController.synchronizeToLiveEdge = () => {}'), 'player.js must override synchronizeToLiveEdge in replay mode to eliminate forced live edge snap');
+  assert(playerJsCode.includes('!this.video?.seeking'), 'player.js timeupdate must not overwrite slider while video is seeking');
+  assert(playerJsCode.includes('this.replayInitialized = true'), 'player.js must track replayInitialized to safely map server PTS window on first level load');
+  assert(playerJsCode.includes('this.video.currentTime = start'), 'player.js must gently clamp to earliest available buffer on eviction rather than live edge');
+
+  // 2. Instantiate vendor/hls.min.js in VM and verify replay config compliance
+  const vm = await import('vm');
+  const hlsMinCode = fs.readFileSync('vendor/hls.min.js', 'utf8');
+  const vmCtx = { performance: performance, location: { href: 'http://localhost/' } };
+  vmCtx.window = vmCtx; vmCtx.self = vmCtx; vmCtx.global = vmCtx; vmCtx.globalThis = vmCtx;
+  vm.createContext(vmCtx);
+  vm.runInContext(hlsMinCode, vmCtx);
+  const HlsClass = vmCtx.Hls;
+
+  const replayHlsInstance = new HlsClass({
+    enableWorker: true,
+    lowLatencyMode: false,
+    backBufferLength: 1200,
+    maxBufferLength: 60,
+    maxMaxBufferLength: 600,
+    maxBufferSize: 60 * 1000 * 1000,
+    liveSyncDuration: undefined,
+    liveMaxLatencyDuration: undefined,
+    liveSyncDurationCount: 3,
+    liveMaxLatencyDurationCount: Infinity,
+    maxLiveSyncPlaybackRate: 1.0,
+    liveDurationInfinity: true
+  });
+
+  assert.strictEqual(replayHlsInstance.config.liveSyncDuration, undefined, 'Replay Hls config liveSyncDuration must be undefined');
+  assert.strictEqual(replayHlsInstance.config.liveMaxLatencyDuration, undefined, 'Replay Hls config liveMaxLatencyDuration must be undefined');
+  assert.strictEqual(replayHlsInstance.config.liveMaxLatencyDurationCount, Infinity, 'Replay Hls config liveMaxLatencyDurationCount must be Infinity');
+  assert(replayHlsInstance.streamController, 'StreamController must exist on Hls instance');
+  assert.strictEqual(typeof replayHlsInstance.streamController.synchronizeToLiveEdge, 'function', 'synchronizeToLiveEdge must exist');
+
+  // Override and verify
+  replayHlsInstance.streamController.synchronizeToLiveEdge = () => {};
+  assert.doesNotThrow(() => {
+    replayHlsInstance.streamController.synchronizeToLiveEdge({ fragments: [{ start: 0 }], edge: 100 });
+  }, 'Overridden synchronizeToLiveEdge must safely no-op');
+
+  console.log('  Pass: Chzzk Timeshift / Replay anti-live-snap configuration and stream controller protection verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

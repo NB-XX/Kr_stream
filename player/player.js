@@ -433,8 +433,18 @@ class StreamSlot {
 
     // 时光机滑动条交互 (防频繁 seek 导致卡顿，拖拽中仅显示时间，松开或变化时才执行精确跳转)
     let isDraggingSlider = false;
-    this.replaySlider.addEventListener('mousedown', () => { isDraggingSlider = true; });
-    this.replaySlider.addEventListener('touchstart', () => { isDraggingSlider = true; }, { passive: true });
+    let dragReleaseTimer = null;
+
+    const startSliderDrag = () => {
+      isDraggingSlider = true;
+      if (dragReleaseTimer) {
+        clearTimeout(dragReleaseTimer);
+        dragReleaseTimer = null;
+      }
+    };
+
+    this.replaySlider.addEventListener('mousedown', startSliderDrag);
+    this.replaySlider.addEventListener('touchstart', startSliderDrag, { passive: true });
 
     this.replaySlider.addEventListener('input', (e) => {
       const seekSec = parseFloat(e.target.value);
@@ -443,18 +453,38 @@ class StreamSlot {
       this.replayTime.textContent = diff <= 3 ? '实时边缘' : `-${this.formatTime(diff)}`;
     });
 
-    this.replaySlider.addEventListener('change', (e) => {
+    const executeSliderSeek = (e) => {
       const seekSec = parseFloat(e.target.value);
-      this.video.currentTime = seekSec;
-      isDraggingSlider = false;
+      if (!isNaN(seekSec) && this.video) {
+        this.video.currentTime = seekSec;
+      }
+      if (dragReleaseTimer) clearTimeout(dragReleaseTimer);
+      dragReleaseTimer = setTimeout(() => {
+        isDraggingSlider = false;
+        dragReleaseTimer = null;
+      }, 150);
+    };
+
+    this.replaySlider.addEventListener('change', executeSliderSeek);
+
+    this.replaySlider.addEventListener('mouseup', () => {
+      if (dragReleaseTimer) clearTimeout(dragReleaseTimer);
+      dragReleaseTimer = setTimeout(() => {
+        isDraggingSlider = false;
+        dragReleaseTimer = null;
+      }, 150);
+    });
+    this.replaySlider.addEventListener('touchend', () => {
+      if (dragReleaseTimer) clearTimeout(dragReleaseTimer);
+      dragReleaseTimer = setTimeout(() => {
+        isDraggingSlider = false;
+        dragReleaseTimer = null;
+      }, 150);
     });
 
-    this.replaySlider.addEventListener('mouseup', () => { isDraggingSlider = false; });
-    this.replaySlider.addEventListener('touchend', () => { isDraggingSlider = false; });
-
-    // 回看播放时，自动跟随更新滑动条当前进度
+    // 回看播放时，自动跟随更新滑动条当前进度 (当正在拖拽或正在 seek 跳转时忽略 timeupdate，避免滑动条弹跳)
     this.video.addEventListener('timeupdate', () => {
-      if (this.isCatchReplayMode && !isDraggingSlider) {
+      if (this.isCatchReplayMode && !isDraggingSlider && !this.video?.seeking) {
         const cur = this.video.currentTime || 0;
         this.replaySlider.value = cur;
         const maxPos = this.replayWindowEnd || parseFloat(this.replaySlider.max) || 600;
@@ -964,12 +994,18 @@ class StreamSlot {
       const hlsConfig = {
         enableWorker: true,
         lowLatencyMode: !isReplay,
-        backBufferLength: 600, // 本地保留 10 分钟 (600秒) 历史缓存
+        backBufferLength: isReplay ? 1200 : 600, // 回看模式允许 20 分钟历史缓存
         maxBufferLength: isReplay ? 60 : 30,
         maxMaxBufferLength: 600, // 暂停时支持扩展至 600 秒
         maxBufferSize: 60 * 1000 * 1000,
-        liveSyncDuration: 3.0, // 直接指定目标延迟秒数，避免 DurationCount 乘 Chzzk 10s 分片头产生 30s 初始巨大延迟
-        liveMaxLatencyDuration: 600, // 统一使用秒数 (600s/10分钟)，同时支持暂停长缓冲且不与 DurationCount 冲突
+        // 直播模式开启 3.0s 低延迟同步与 600s 保护；
+        // 回看/时光机模式下彻底置空 liveSyncDuration 与 liveMaxLatencyDuration，避免因落后边缘被强制 snap
+        liveSyncDuration: isReplay ? undefined : 3.0,
+        liveMaxLatencyDuration: isReplay ? undefined : 600,
+        liveSyncDurationCount: isReplay ? 3 : undefined,
+        liveMaxLatencyDurationCount: isReplay ? Infinity : undefined,
+        maxLiveSyncPlaybackRate: 1.0,
+        liveDurationInfinity: Boolean(isReplay),
         xhrSetup: function (xhr) {
           xhr.withCredentials = false;
         }
@@ -977,6 +1013,10 @@ class StreamSlot {
 
       try {
         this.hls = new Hls(hlsConfig);
+        // 回看模式下彻底禁用 Hls.js 的 synchronizeToLiveEdge，切断内部因延迟或 readyState 检测向直播边缘强制跳转
+        if (isReplay && this.hls.streamController) {
+          this.hls.streamController.synchronizeToLiveEdge = () => {};
+        }
       } catch (e) {
         console.error(`[KRStream] 初始化 Hls 实例失败:`, e);
         this.showLoading(`播放器初始化失败: ${e.message}`);
@@ -1013,6 +1053,15 @@ class StreamSlot {
             this.replaySlider.min = Math.floor(start);
             this.replaySlider.max = Math.ceil(end);
             this.replayTotalDuration = end - start;
+
+            if (!this.replayInitialized) {
+              this.replayInitialized = true;
+              this.replaySlider.value = Math.ceil(end);
+              this.replayTime.textContent = '实时边缘';
+            } else if (this.video && this.video.currentTime < start) {
+              // 若播放时间已被服务端滑动窗口淘汰，平滑对齐至可用的最早历史分片，绝不跳回直播边缘
+              this.video.currentTime = start;
+            }
           }
         } else if (!isReplay && data.details && !this.hasInitialLiveSynced) {
           const livePos = this.hls.liveSyncPosition;
@@ -1110,12 +1159,17 @@ class StreamSlot {
             }
           }
 
-          // 非致命缓冲卡顿 (网络抖动造成解码滞后): 若停滞，尝试微调微前移消除 MSE 卡死
-          if (this.video && !this.video.paused && !this.isUserPaused && !this.isCatchReplayMode) {
-            const livePos = this.hls?.liveSyncPosition;
-            if (typeof livePos === 'number' && livePos > 0 && Math.abs(livePos - this.video.currentTime) > 5.0) {
-              this.video.currentTime = livePos;
+          // 非致命缓冲卡顿 (网络抖动造成解码滞后):
+          if (this.video && !this.video.paused && !this.isUserPaused) {
+            if (!this.isCatchReplayMode) {
+              const livePos = this.hls?.liveSyncPosition;
+              if (typeof livePos === 'number' && livePos > 0 && Math.abs(livePos - this.video.currentTime) > 5.0) {
+                this.video.currentTime = livePos;
+              } else if (this.video.currentTime > 0) {
+                this.video.currentTime += 0.05;
+              }
             } else if (this.video.currentTime > 0) {
+              // 回看模式下微调 0.05s 越过微缝隙，绝对禁止跳至直播边缘
               this.video.currentTime += 0.05;
             }
           }
@@ -1532,6 +1586,7 @@ class StreamSlot {
 
       if (res && res.success && res.data?.replayUrl) {
         this.isCatchReplayMode = true;
+        this.replayInitialized = false;
         this.replayManifestUrl = res.data.replayUrl;
         this.replayTotalDuration = parseFloat(res.data.totalDuration) || 600;
 
@@ -1561,6 +1616,7 @@ class StreamSlot {
   // 从时光机返回实时直播
   returnToLive() {
     this.isCatchReplayMode = false;
+    this.replayInitialized = false;
     this.hasInitialLiveSynced = false;
     this.networkRetryCount = 0;
     if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
@@ -1575,7 +1631,7 @@ class StreamSlot {
 
     if (this.currentStreamData?.streamUrl) {
       this.startHlsPlay(this.currentStreamData.streamUrl, { isReplay: false });
-      this.catchUpLiveEdge();
+      this.startCatchUp();
     }
   }
 
@@ -2353,7 +2409,7 @@ class StreamSlot {
       });
 
       btnCatchup.addEventListener('click', () => {
-        this.catchUpLiveEdge();
+        this.toggleCatchUpLiveEdge();
       });
 
       btnRetrieve.addEventListener('click', () => {
