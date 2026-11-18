@@ -44,15 +44,6 @@
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
   },
-  "declarative_net_request": {
-    "rule_resources": [
-      {
-        "id": "krstream_rules",
-        "enabled": true,
-        "path": "rules/declarative_net_rules.json"
-      }
-    ]
-  },
   "web_accessible_resources": [
     {
       "resources": [

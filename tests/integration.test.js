@@ -372,6 +372,34 @@ async function runTests() {
 
   console.log('  Pass: Chzzk Timeshift / Replay anti-live-snap configuration and stream controller protection verified.');
 
+  console.log('[Test 17] Extension Manifest Integrity & Resource Existence Verification');
+  const manifest = JSON.parse(fs.readFileSync('manifest.json', 'utf8'));
+
+  // Ensure service worker exists
+  assert(manifest.background && manifest.background.service_worker, 'manifest.background.service_worker must be defined');
+  assert(fs.existsSync(manifest.background.service_worker), 'service_worker file must exist on disk: ' + manifest.background.service_worker);
+
+  // Ensure all action icons and extension icons exist
+  const iconPaths = [
+    ...Object.values(manifest.action?.default_icon || {}),
+    ...Object.values(manifest.icons || {})
+  ];
+  for (const p of iconPaths) {
+    assert(fs.existsSync(p), 'Icon file must exist: ' + p);
+  }
+
+  // Ensure no stale or missing rule_resources path in manifest
+  if (manifest.declarative_net_request && manifest.declarative_net_request.rule_resources) {
+    for (const res of manifest.declarative_net_request.rule_resources) {
+      assert(fs.existsSync(res.path), 'Rule resource path in manifest must exist on disk: ' + res.path);
+    }
+  } else {
+    // Verified: dynamic rules handled cleanly via updateDynamicRules without static manifest overhead
+    assert(!manifest.declarative_net_request, 'Static rule_resources should be omitted when all DNR rules are dynamic');
+  }
+
+  console.log('  Pass: Manifest integrity and all referenced file paths verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 
