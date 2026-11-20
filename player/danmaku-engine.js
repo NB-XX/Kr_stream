@@ -79,7 +79,7 @@ export class DanmakuEngine {
       const btn = document.createElement('button');
       btn.className = `ctrl-icon-btn btn-danmaku ${this.enabled ? 'active' : ''}`;
       btn.id = `btn-danmaku-${this.slot.slotId}`;
-      btn.title = '实时弹幕: 开启 (右键设置)';
+      btn.title = '弹幕 (右键设置)';
       btn.innerHTML = `
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
@@ -120,11 +120,11 @@ export class DanmakuEngine {
     menu.id = `danmaku-menu-${this.slot.slotId}`;
     menu.innerHTML = `
       <div class="sub-menu-header">
-        <span class="sub-menu-title">实时弹幕设置</span>
+        <span class="sub-menu-title">弹幕设置</span>
         <span class="sub-menu-status" id="danmaku-status-${this.slot.slotId}">${this.enabled ? '已开启' : '已关闭'}</span>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">不透明度:</label>
+        <label class="sub-group-label">不透明度</label>
         <div class="sub-options" id="danmaku-opacity-opts-${this.slot.slotId}">
           <button class="sub-opt-btn ${this.opacity === 1.0 ? 'active' : ''}" data-val="1.0">100%</button>
           <button class="sub-opt-btn ${this.opacity === 0.8 ? 'active' : ''}" data-val="0.8">80%</button>
@@ -133,7 +133,7 @@ export class DanmakuEngine {
         </div>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">弹幕字号:</label>
+        <label class="sub-group-label">字号</label>
         <div class="sub-options" id="danmaku-size-opts-${this.slot.slotId}">
           <button class="sub-opt-btn ${this.fontSize === 16 ? 'active' : ''}" data-val="16">小 (16px)</button>
           <button class="sub-opt-btn ${this.fontSize === 20 ? 'active' : ''}" data-val="20">中 (20px)</button>
@@ -141,7 +141,7 @@ export class DanmakuEngine {
         </div>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">飞行速度:</label>
+        <label class="sub-group-label">速度</label>
         <div class="sub-options" id="danmaku-speed-opts-${this.slot.slotId}">
           <button class="sub-opt-btn ${this.speed === 8.5 ? 'active' : ''}" data-val="8.5">慢速 (8.5s)</button>
           <button class="sub-opt-btn ${this.speed === 6.5 ? 'active' : ''}" data-val="6.5">标准 (6.5s)</button>
@@ -149,7 +149,7 @@ export class DanmakuEngine {
         </div>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">展示区域:</label>
+        <label class="sub-group-label">区域</label>
         <div class="sub-options" id="danmaku-area-opts-${this.slot.slotId}">
           <button class="sub-opt-btn ${this.screenArea === 0.5 ? 'active' : ''}" data-val="0.5">半屏 (50%)</button>
           <button class="sub-opt-btn ${this.screenArea === 0.8 ? 'active' : ''}" data-val="0.8">大部 (80%)</button>
@@ -157,7 +157,7 @@ export class DanmakuEngine {
         </div>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">SOOP 会员弹幕颜色:</label>
+        <label class="sub-group-label">SOOP 会员颜色</label>
         <div class="sub-options danmaku-color-opts" id="danmaku-soop-color-opts-${this.slot.slotId}">
           <button class="sub-opt-btn color-preset-btn ${this.soopMemberColor === '#339af0' ? 'active' : ''}" data-val="#339af0">
             <span class="color-dot" style="background:#339af0;"></span>经典蓝
@@ -175,7 +175,7 @@ export class DanmakuEngine {
         </div>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">Chzzk 粉丝弹幕颜色:</label>
+        <label class="sub-group-label">Chzzk 会员颜色</label>
         <div class="sub-options danmaku-color-opts" id="danmaku-chzzk-color-opts-${this.slot.slotId}">
           <button class="sub-opt-btn color-preset-btn ${this.chzzkMemberColor === '#51cf66' ? 'active' : ''}" data-val="#51cf66">
             <span class="color-dot" style="background:#51cf66;"></span>草绿
@@ -191,9 +191,6 @@ export class DanmakuEngine {
             <input type="color" class="danmaku-color-input" id="danmaku-chzzk-custom-${this.slot.slotId}" value="${this.chzzkMemberColor}" />
           </label>
         </div>
-      </div>
-      <div class="sub-menu-tip">
-        GPU 硬件加速与防抖动分轨，SOOP/Chzzk 会员粉丝弹幕独立色彩高亮。
       </div>
     `;
 
@@ -301,7 +298,7 @@ export class DanmakuEngine {
     if (!this.menuEl) return;
     if (x !== null && y !== null) {
       const menuWidth = 260;
-      const menuHeight = 420;
+      const menuHeight = 370;
       const left = Math.min(window.innerWidth - menuWidth - 10, Math.max(10, x));
       const top = Math.min(window.innerHeight - menuHeight - 10, Math.max(10, y - menuHeight));
       this.menuEl.style.left = `${left}px`;
@@ -334,10 +331,10 @@ export class DanmakuEngine {
     if (!this.btnEl) return;
     if (this.enabled) {
       this.btnEl.classList.add('active');
-      this.btnEl.title = '实时弹幕: 已开启 (右键设置)';
+      this.btnEl.title = '弹幕 (右键设置)';
     } else {
       this.btnEl.classList.remove('active');
-      this.btnEl.title = '实时弹幕: 已关闭 (右键设置)';
+      this.btnEl.title = '弹幕 (右键设置)';
     }
   }
 

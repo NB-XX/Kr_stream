@@ -412,6 +412,57 @@ async function runTests() {
 
   console.log('  Pass: Proxy conflict eliminated and redundant refresh button removed.');
 
+  console.log('[Test 19] Chzzk/CI.ME Real Account Names, CI.ME Following Live Fetch, and Minimalist UI Cleanup');
+  const { AccountManager } = await import('../core/account-manager.js');
+  const latestAccountCode = fs.readFileSync('core/account-manager.js', 'utf8');
+  assert(latestAccountCode.includes('comm-api.game.naver.com/nng_main/v1/user/getUserStatus'), 'AccountManager must query Naver getUserStatus for Chzzk nickname');
+  assert(latestAccountCode.includes('10014') && latestAccountCode.includes('comm-api.game.naver.com'), 'AccountManager must register DNR Rule 10014 for comm-api.game.naver.com');
+  assert(latestAccountCode.includes('https://ci.me/api/app/user'), 'AccountManager must query /api/app/user for CI.ME username');
+  assert(latestAccountCode.includes('data?.followings') && latestAccountCode.includes('following-lives'), 'AccountManager must parse CI.ME data.followings and following-lives');
+
+  // Unit-test CI.ME live channel item parser against real API payload shape (cheriihanavi)
+  const sampleCimePayload = {
+    channel: {
+      id: '1000201',
+      slug: 'cheriihanavi',
+      name: '체리 of HANAVI',
+      isLive: true,
+      imageUrl: 'https://streaming.cf.ci.me/assets/service/avatar.jpg',
+      description: ''
+    },
+    live: {
+      id: '1000052',
+      curViewerCnt: 231,
+      title: '[하나비] 체체체체체리시마이럽',
+      category: { id: '16', name: 'Just Chatting' },
+      openedAt: '2026-11-20T01:00:57.000Z'
+    }
+  };
+  const parsedCime = AccountManager.parseCimeChannelItem(sampleCimePayload);
+  assert(parsedCime, 'parseCimeChannelItem must return parsed object');
+  assert.strictEqual(parsedCime.platform, 'cime');
+  assert.strictEqual(parsedCime.channelId, 'cheriihanavi');
+  assert.strictEqual(parsedCime.streamer, '체리 of HANAVI');
+  assert.strictEqual(parsedCime.isLive, true);
+  assert.strictEqual(parsedCime.viewers, 231);
+  assert.strictEqual(parsedCime.title, '[하나비] 체체체체체리시마이럽');
+  assert(parsedCime.openTime > 0, 'openTime must be parsed from openedAt');
+
+  // Verify player.js renders CI.ME username uniformly
+  const latestPlayerJs = fs.readFileSync('player/player.js', 'utf8');
+  assert(latestPlayerJs.includes('CI.ME: 已连接 (${cime.username})'), 'checkAccounts must display CI.ME logged-in username');
+
+  // Verify verbose AI-style descriptive texts have been stripped across all UI files
+  const latestPlayerHtml = fs.readFileSync('player/player.html', 'utf8');
+  const latestDanmakuJs = fs.readFileSync('player/danmaku-engine.js', 'utf8');
+  const latestPopupHtml = fs.readFileSync('popup/popup.html', 'utf8');
+  assert(!latestDanmakuJs.includes('GPU 硬件加速与防抖动分轨'), 'Danmaku settings must not show verbose filler text');
+  assert(!latestPlayerJs.includes('硬性保护：停止阈值'), 'Catchup menu must not show verbose notice text');
+  assert(!latestPlayerJs.includes('多屏工作台快速指南'), 'Empty slot must not show verbose comic guide');
+  assert(!latestPlayerHtml.includes('状态监控轮询中'), 'Sidebar must not show polling status filler');
+  assert(!latestPopupHtml.includes('setting-desc') && !latestPopupHtml.includes('tips-box'), 'Popup must not show verbose setting descriptions or tips box');
+  console.log('  Pass: Chzzk/CI.ME real usernames, CI.ME following parser, and minimalist UI verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

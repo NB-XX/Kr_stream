@@ -125,60 +125,11 @@ class StreamSlot {
           <div class="loading-msg" id="loading-msg-${this.slotId}">正在连接直播源...</div>
         </div>
 
-        <!-- 初始空闲引导卡 (漫画式三步使用指引，无转圈，体验舒适) -->
         <div class="slot-guide-comic ${this.currentStreamData ? 'hidden' : ''}" id="guide-comic-${this.slotId}">
-          <div class="comic-header">
-            <span class="comic-tag">KRSTREAM QUICK START</span>
-            <span class="comic-title">多屏工作台快速指南</span>
-          </div>
-          <div class="comic-panels">
-            <!-- 漫画第 1 格 -->
-            <div class="comic-panel">
-              <div class="panel-step">01. 选台</div>
-              <div class="panel-art">
-                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="2" y="2" width="44" height="32" rx="2" stroke="#3f3f46"/>
-                  <line x1="14" y1="2" x2="14" y2="34" stroke="#3f3f46" stroke-dasharray="2 2"/>
-                  <rect x="4" y="6" width="7" height="4" fill="#00aeec"/>
-                  <rect x="4" y="13" width="7" height="4" fill="#3f3f46"/>
-                  <rect x="4" y="20" width="7" height="4" fill="#3f3f46"/>
-                  <path d="M22 18l12-7v14z" fill="#00aeec"/>
-                </svg>
-              </div>
-              <div class="panel-caption">点击左侧关注主播<br>或输入直播链接直连</div>
-            </div>
-            <!-- 漫画第 2 格 -->
-            <div class="comic-panel">
-              <div class="panel-step">02. 布局</div>
-              <div class="panel-art">
-                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="2" y="2" width="20" height="14" rx="2" stroke="#00aeec"/>
-                  <rect x="26" y="2" width="20" height="14" rx="2" stroke="#3f3f46"/>
-                  <rect x="2" y="20" width="20" height="14" rx="2" stroke="#3f3f46"/>
-                  <rect x="26" y="20" width="20" height="14" rx="2" stroke="#3f3f46"/>
-                  <path d="M12 9h4M14 7v4" stroke="#00aeec"/>
-                </svg>
-              </div>
-              <div class="panel-caption">自由增加多窗口同播<br>支持保存为布局模板</div>
-            </div>
-            <!-- 漫画第 3 格 -->
-            <div class="comic-panel">
-              <div class="panel-step">03. 互动</div>
-              <div class="panel-art">
-                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
-                  <rect x="2" y="2" width="44" height="32" rx="2" stroke="#3f3f46"/>
-                  <path d="M6 10h18M6 16h12" stroke="#a1a1aa"/>
-                  <rect x="6" y="22" width="26" height="7" rx="1" fill="rgba(0,174,236,0.15)" stroke="#00aeec"/>
-                  <polygon points="38 7 32 17 38 17 36 27 44 14 38 14" fill="#10b981"/>
-                </svg>
-              </div>
-              <div class="panel-caption">右键字幕双语翻译<br>右键追帧设安全延迟</div>
-            </div>
-          </div>
           <div class="comic-action">
             <button class="btn-comic-pick" id="btn-comic-pick-${this.slotId}">
               <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8h12M8 2l6 6-6 6"/></svg>
-              <span>从左侧选择开播主播</span>
+              <span>选择直播</span>
             </button>
           </div>
         </div>
@@ -194,14 +145,14 @@ class StreamSlot {
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
           </button>
 
-          <!-- 一键追帧 (2.0x 极速追帧至实时边缘，右键设置安全延迟) -->
-          <button class="ctrl-icon-btn btn-ctrl-catchup" id="btn-ctrl-catchup-${this.slotId}" title="2.0x 极速追帧至实时边缘 (右键设置安全延迟距离)">
+          <!-- 一键追帧 -->
+          <button class="ctrl-icon-btn btn-ctrl-catchup" id="btn-ctrl-catchup-${this.slotId}" title="追帧 (右键设置)">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>
             <span class="ctrl-btn-tag" id="ctrl-catchup-tag-${this.slotId}">追帧</span>
           </button>
 
           <!-- 实时回看 (时光机) -->
-          <button class="ctrl-icon-btn btn-ctrl-replay" id="btn-ctrl-replay-${this.slotId}" title="开启实时回看 (时光机)">
+          <button class="ctrl-icon-btn btn-ctrl-replay" id="btn-ctrl-replay-${this.slotId}" title="时光机">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 8 14"/></svg>
             <span class="ctrl-replay-tag" id="ctrl-replay-tag-${this.slotId}">时光机</span>
           </button>
@@ -218,35 +169,35 @@ class StreamSlot {
 
         <div class="controls-right">
           <!-- 画质选择 -->
-          <select class="quality-dropdown" id="quality-${this.slotId}" title="清晰度切换">
+          <select class="quality-dropdown" id="quality-${this.slotId}" title="画质">
             <option value="-1">原画</option>
           </select>
           <!-- 独立加速 CDN 选择 -->
-          <select class="cdn-dropdown" id="cdn-${this.slotId}" title="为此窗口切换专属加速 CDN">
+          <select class="cdn-dropdown" id="cdn-${this.slotId}" title="切换 CDN">
             <option value="default">CDN: 自动</option>
           </select>
           <!-- 实时字幕开关 -->
-          <button class="ctrl-icon-btn btn-subs" id="btn-subs-${this.slotId}" title="实时字幕: 开启 (右键设置)">
+          <button class="ctrl-icon-btn btn-subs" id="btn-subs-${this.slotId}" title="字幕 (右键设置)">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             <span class="btn-subs-tag" id="btn-subs-tag-${this.slotId}">字幕</span>
           </button>
-          <!-- 历史字幕入口 (点击展开本窗口的历史转录字幕、回溯播放与长图分享) -->
-          <button class="ctrl-icon-btn btn-ctrl-sub-history" id="btn-sub-history-${this.slotId}" title="查看此窗口的历史转录字幕、回放与长图分享">
+          <!-- 历史字幕入口 -->
+          <button class="ctrl-icon-btn btn-ctrl-sub-history" id="btn-sub-history-${this.slotId}" title="历史字幕">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l6 6v10a2 2 0 01-2 2z"/><path d="M14 2v4a2 2 0 002 2h4M10 12h4M10 16h4"/></svg>
             <span class="btn-sub-history-tag">历史字幕</span>
             <span class="ctrl-sub-badge" id="ctrl-sub-badge-${this.slotId}" style="display:none;">0</span>
           </button>
           <!-- 录制 MP4 -->
-          <button class="ctrl-icon-btn" id="btn-record-${this.slotId}" title="录制直播并保存为 MP4">
+          <button class="ctrl-icon-btn" id="btn-record-${this.slotId}" title="录制 MP4">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor"><circle cx="12" cy="12" r="8"/></svg>
             <span id="record-txt-${this.slotId}" style="margin-left:3px;font-size:10px;">MP4</span>
           </button>
           <!-- 截图 -->
-          <button class="ctrl-icon-btn" id="btn-snap-${this.slotId}" title="高清截图">
+          <button class="ctrl-icon-btn" id="btn-snap-${this.slotId}" title="截图">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
           </button>
           <!-- 悬浮小窗 (画中画) -->
-          <button class="ctrl-icon-btn" id="btn-pip-${this.slotId}" title="悬浮小窗播放 (含弹幕与字幕 | 左键: 桌面置顶画中画, 右键: 独立弹出窗口)">
+          <button class="ctrl-icon-btn" id="btn-pip-${this.slotId}" title="画中画 (右键独立窗口)">
             <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"/><path d="M12 9h8v8h-8z"/></svg>
           </button>
           <!-- 全屏 -->
@@ -1475,20 +1426,14 @@ class StreamSlot {
 
     this.catchupMenu.innerHTML = `
       <div class="sub-menu-header">
-        <span class="sub-menu-title">追帧安全延迟设置</span>
-        <span class="sub-menu-status">分片: ${segDur.toFixed(1)}s</span>
-      </div>
-      <div class="catchup-menu-notice">
-        硬性保护：停止阈值不得低于单分片时长 (${segDur.toFixed(1)}s)，低于此值将自动以分片长度为准，防止播放卡顿。
+        <span class="sub-menu-title">追帧延迟</span>
+        <span class="sub-menu-status">分片 ${segDur.toFixed(1)}s</span>
       </div>
       <div class="sub-menu-group">
-        <label class="sub-group-label">停止追帧的安全延迟距离:</label>
+        <label class="sub-group-label">目标延迟</label>
         <div class="sub-options">
           ${optsHtml}
         </div>
-      </div>
-      <div class="sub-menu-tip">
-        当前设定: ${this.safeCatchupDistance.toFixed(1)}s (实际生效停止阈值: ${effective.toFixed(1)}s)
       </div>
     `;
 
@@ -1526,11 +1471,11 @@ class StreamSlot {
     if (left === undefined || top === undefined) {
       const rect = this.btnCtrlCatchup.getBoundingClientRect();
       left = rect.left;
-      top = rect.top - 180;
+      top = rect.top - 105;
     }
 
     const menuWidth = 260;
-    const menuHeight = 180;
+    const menuHeight = 105;
     if (left + menuWidth > window.innerWidth - 10) {
       left = window.innerWidth - menuWidth - 10;
     }
@@ -2302,9 +2247,8 @@ class StreamSlot {
       placeholder.innerHTML = `
         <div class="pip-slot-placeholder-inner">
           <div class="pip-ph-icon"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h18"/></svg></div>
-          <div class="pip-ph-title">已开启桌面置顶悬浮小窗</div>
-          <div class="pip-ph-subtitle">直播画面、实时弹幕与 AI 双语字幕正在悬浮小窗中同步显示</div>
-          <button class="btn-pip-restore-main" type="button">收回至主工作台</button>
+          <div class="pip-ph-title">画中画播放中</div>
+          <button class="btn-pip-restore-main" type="button">收回窗口</button>
         </div>
       `;
 
@@ -3064,7 +3008,7 @@ class RightDrawerManager {
       : history;
 
     if (filtered.length === 0) {
-      this.subList.innerHTML = `<div class="sub-empty-tip">${this.searchKeyword ? '无匹配的历史字幕' : '暂无转录字幕记录，开启实时字幕后自动记录...'}</div>`;
+      this.subList.innerHTML = `<div class="sub-empty-tip">${this.searchKeyword ? '无匹配记录' : '暂无字幕'}</div>`;
       return;
     }
 
@@ -3451,7 +3395,7 @@ class AppHub {
     let cdnHtml = '';
     if (cdns.length > 0) {
       cdnHtml = `
-        <div class="menu-group-header">复制 M3U8 直链 (选择 CDN)</div>
+        <div class="menu-group-header">复制直链</div>
         ${cdns.map((c) => `
           <button class="menu-item-btn" data-action="copy-cdn" data-cdn="${c.key}">
             <span>${c.name}</span>
@@ -3465,10 +3409,10 @@ class AppHub {
     if (!isDirectLinkOnly) {
       generalHtml = `
         <button class="menu-item-btn" data-action="toggle-pin">
-          <span>${isPinned ? '📌 取消置顶此直播间' : '📌 置顶此直播间 (全部分类通用)'}</span>
+          <span>${isPinned ? '取消置顶' : '置顶'}</span>
         </button>
         <button class="menu-item-btn" data-action="play-new">
-          <span>▶ 在新独立窗口播放</span>
+          <span>新窗口播放</span>
         </button>
         <div class="menu-divider"></div>
       `;
@@ -3606,34 +3550,41 @@ class AppHub {
 
         if (soop.isLoggedIn) {
           badgeSoop.className = 'acc-badge online';
-          badgeSoop.title = `SOOP: 已连接 (${soop.username || '已登录'})`;
-          badgeSoop.querySelector('.name').textContent = `SOOP: 已连接 (${soop.username || '已登录'})`;
+          const soopText = soop.username ? `SOOP: 已连接 (${soop.username})` : 'SOOP: 已连接';
+          badgeSoop.title = soopText;
+          badgeSoop.querySelector('.name').textContent = soopText;
           badgeSoop.onclick = null;
         } else {
           badgeSoop.className = 'acc-badge';
-          badgeSoop.title = '未登录 SOOP，点击可在新标签页打开 sooplive.com 登录';
+          badgeSoop.title = '点击登录 SOOP';
           badgeSoop.querySelector('.name').textContent = 'SOOP: 未登录';
           badgeSoop.onclick = () => window.open('https://www.sooplive.com', '_blank');
         }
 
         if (chzzk.isLoggedIn) {
           badgeChzzk.className = 'acc-badge online';
-          badgeChzzk.title = `CHZZK: 已连接 (${chzzk.username || 'Naver已登录'})`;
-          badgeChzzk.querySelector('.name').textContent = `CHZZK: 已连接 (${chzzk.username || 'Naver已登录'})`;
+          const chzzkText = chzzk.username ? `CHZZK: 已连接 (${chzzk.username})` : 'CHZZK: 已连接';
+          badgeChzzk.title = chzzkText;
+          badgeChzzk.querySelector('.name').textContent = chzzkText;
           badgeChzzk.onclick = null;
         } else {
           badgeChzzk.className = 'acc-badge';
-          badgeChzzk.title = '未登录 Naver/Chzzk，点击可在新标签页打开 chzzk.naver.com 登录';
+          badgeChzzk.title = '点击登录 Chzzk';
           badgeChzzk.querySelector('.name').textContent = 'CHZZK: 未登录';
           badgeChzzk.onclick = () => window.open('https://chzzk.naver.com', '_blank');
         }
 
         if (cime.isLoggedIn) {
           badgeCime.className = 'acc-badge online';
-          badgeCime.querySelector('.name').textContent = 'CI.ME: 已连接';
+          const cimeText = cime.username ? `CI.ME: 已连接 (${cime.username})` : 'CI.ME: 已连接';
+          badgeCime.title = cimeText;
+          badgeCime.querySelector('.name').textContent = cimeText;
+          badgeCime.onclick = null;
         } else {
           badgeCime.className = 'acc-badge';
-          badgeCime.querySelector('.name').textContent = 'CI.ME: 未登录/访客';
+          badgeCime.title = '点击登录 CI.ME';
+          badgeCime.querySelector('.name').textContent = 'CI.ME: 未登录';
+          badgeCime.onclick = () => window.open('https://ci.me', '_blank');
         }
       }
     });
@@ -3659,12 +3610,12 @@ class AppHub {
 
   async syncFollowings() {
     const syncText = document.getElementById('sync-btn-text');
-    syncText.textContent = '正在拉取三大平台关注主播...';
+    syncText.textContent = '同步中...';
     this.btnSyncAll.disabled = true;
 
     chrome.runtime.sendMessage({ action: 'SYNC_FOLLOWINGS' }, (res) => {
       this.btnSyncAll.disabled = false;
-      syncText.textContent = '一键导入并同步关注主播';
+      syncText.textContent = '同步关注';
 
       if (res && res.success && res.data) {
         this.followings = res.data;
@@ -3747,7 +3698,7 @@ class AppHub {
 
     if (filtered.length === 0) {
       this.streamerListContainer.innerHTML = `
-        <div class="empty-state">该分类下暂无主播，请点击上方【一键导入并同步关注主播】刷新。</div>
+        <div class="empty-state">暂无主播</div>
       `;
       return;
     }

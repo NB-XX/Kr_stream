@@ -526,10 +526,10 @@ export class SubtitleEngine {
     if (this.btnEl) {
       if (this.enabled) {
         this.btnEl.classList.add('active');
-        this.btnEl.title = '实时字幕: 已开启 (右键设置)';
+        this.btnEl.title = '字幕 (右键设置)';
       } else {
         this.btnEl.classList.remove('active');
-        this.btnEl.title = '实时字幕: 已关闭 (右键设置)';
+        this.btnEl.title = '字幕 (右键设置)';
       }
     }
   }

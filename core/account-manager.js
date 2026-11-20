@@ -31,6 +31,9 @@ export class AccountManager {
         { url: `https://ch.${cleanDomain}` },
         { url: `https://member.${cleanDomain}` }
       ];
+      if (cleanDomain === 'ci.me') {
+        queryList.push({ url: 'https://ci.me/api/app/user' });
+      }
 
       for (const q of queryList) {
         try {
@@ -66,9 +69,9 @@ export class AccountManager {
     try {
       const extensionId = chrome.runtime.id;
       const rulesToAdd = [];
-      const ruleIdsToRemove = [10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013];
+      const ruleIdsToRemove = [10001, 10002, 10003, 10004, 10005, 10006, 10007, 10008, 10009, 10010, 10011, 10012, 10013, 10014];
 
-      // 1. Chzzk API 动态凭证注入规则 (Rule 10001)
+      // 1. Chzzk API 动态凭证注入规则 (Rule 10001 & Rule 10014)
       const chzzkCookie = await this.getCookieString(['naver.com', 'chzzk.naver.com']);
       const chzzkHeaders = [
         { header: 'Origin', operation: 'set', value: 'https://chzzk.naver.com' },
@@ -90,6 +93,21 @@ export class AccountManager {
         },
         condition: {
           urlFilter: '||api.chzzk.naver.com',
+          initiatorDomains: [extensionId],
+          resourceTypes: ['xmlhttprequest', 'other']
+        }
+      });
+
+      // Rule 10014: Chzzk / Naver 用户状态与昵称接口规则
+      rulesToAdd.push({
+        id: 10014,
+        priority: 25,
+        action: {
+          type: 'modifyHeaders',
+          requestHeaders: chzzkHeaders
+        },
+        condition: {
+          urlFilter: '||comm-api.game.naver.com',
           initiatorDomains: [extensionId],
           resourceTypes: ['xmlhttprequest', 'other']
         }
@@ -436,32 +454,65 @@ export class AccountManager {
           isLoggedIn: true,
           username: 'Naver已登录'
         };
-        // 尝试拉取昵称
+        // 通过 Naver 通行证状态接口拉取昵称
         try {
-          const meRes = await fetch('https://api.chzzk.naver.com/service/v1/user/me', {
+          const meRes = await fetch('https://comm-api.game.naver.com/nng_main/v1/user/getUserStatus', {
             headers: {
-              'front-client-platform-type': 'PC',
               'Accept': 'application/json'
             },
             credentials: 'include'
           });
-          const meJson = await meRes.json();
-          if (meJson?.content?.nickname) {
-            status.chzzk.username = meJson.content.nickname;
+          if (meRes.ok) {
+            const meJson = await meRes.json();
+            if (meJson?.code === 200 && meJson?.content?.loggedIn === false) {
+              status.chzzk = { platform: 'chzzk', isLoggedIn: false, username: '' };
+            } else if (meJson?.content?.nickname) {
+              status.chzzk.username = meJson.content.nickname;
+            }
           }
         } catch (e) {}
       }
     } catch (e) {}
 
-    // 3. CI.ME 账号检测
+    // 3. CI.ME 账号检测 (校验登录接口并读取真实用户名)
     try {
-      const cimeCookieStr = await this.getCookieString(['ci.me']);
-      if (cimeCookieStr && cimeCookieStr.length > 10) {
-        status.cime = {
-          platform: 'cime',
-          isLoggedIn: true,
-          username: 'CI.ME已连接'
-        };
+      const cimeHeaders = {
+        'Accept': 'application/json',
+        'Origin': 'https://ci.me',
+        'Referer': 'https://ci.me/'
+      };
+      const userRes = await fetch('https://ci.me/api/app/user', {
+        headers: cimeHeaders,
+        credentials: 'include'
+      });
+      if (userRes.ok) {
+        const userJson = await userRes.json().catch(() => null);
+        const u = userJson?.data;
+        if (u) {
+          const username = u.channel?.name || u.nickname || u.name || u.channel?.slug || '';
+          status.cime = {
+            platform: 'cime',
+            isLoggedIn: true,
+            username: username || 'CI.ME已登录'
+          };
+        }
+      } else if (userRes.status !== 401 && userRes.status !== 403) {
+        // 非未登录状态码时尝试备用频道接口
+        const chRes = await fetch('https://ci.me/api/app/user/my-channel', {
+          headers: cimeHeaders,
+          credentials: 'include'
+        });
+        if (chRes.ok) {
+          const chJson = await chRes.json().catch(() => null);
+          const ch = chJson?.data;
+          if (ch) {
+            status.cime = {
+              platform: 'cime',
+              isLoggedIn: true,
+              username: ch.name || ch.slug || 'CI.ME已登录'
+            };
+          }
+        }
       }
     } catch (e) {}
 
@@ -661,64 +712,139 @@ export class AccountManager {
   }
 
   /**
-   * 拉取 CI.ME 关注频道列表 (仅拉取已登录关注，未登录或为空时不包含推荐主播)
+   * 标准化解析 CI.ME 关注项 / 正在开播项
+   */
+  static parseCimeChannelItem(ch) {
+    if (!ch || typeof ch !== 'object') return null;
+    const channelObj = ch.channel || ch;
+    const liveObj = ch.live || channelObj.live || (ch.state === 'ACTIVE' ? ch : null);
+    const isLive = Boolean(
+      channelObj.isLive === true ||
+      ch.isLive === true ||
+      liveObj?.state === 'ACTIVE' ||
+      (liveObj && liveObj.id)
+    );
+    const slug = String(channelObj.slug || ch.slug || channelObj.id || ch.id || '').trim();
+    if (!slug) return null;
+
+    const avatar = channelObj.imageUrl || ch.imageUrl || channelObj.avatarUrl || '';
+    const liveThumb = liveObj?.imageUrl || liveObj?.thumbnailUrl || liveObj?.coverUrl || avatar;
+    const rawOpen = liveObj?.openedAt || liveObj?.startedAt || liveObj?.createdAt || '';
+    let openTime = 0;
+    if (rawOpen) {
+      const t = new Date(rawOpen).getTime();
+      if (!isNaN(t) && t > 0) openTime = t;
+    }
+
+    return {
+      platform: 'cime',
+      channelId: slug,
+      streamer: channelObj.name || ch.name || slug,
+      isLive: isLive,
+      title: liveObj?.title || channelObj.description || '',
+      category: liveObj?.category?.name || '',
+      viewers: liveObj?.curViewerCnt || liveObj?.viewers || 0,
+      openTime: openTime,
+      openDate: rawOpen,
+      thumbnail: avatar,
+      avatar: avatar,
+      liveThumb: liveThumb,
+      updatedAt: Date.now()
+    };
+  }
+
+  /**
+   * 拉取 CI.ME 关注频道列表 (仅拉取已登录关注，绝不混入推荐/热门主播)
    */
   static async fetchCimeFollowings() {
-    let channels = [];
-    const endpoints = [
-      'https://ci.me/api/app/channels/following',
-      'https://ci.me/api/app/users/me/followings'
-    ];
+    await this.setupAllDynamicRules().catch(() => {});
 
-    for (const url of endpoints) {
+    const headers = {
+      'Accept': 'application/json',
+      'Origin': 'https://ci.me',
+      'Referer': 'https://ci.me/'
+    };
+    const channelMap = new Map();
+
+    const mergeItem = (raw) => {
+      const parsed = this.parseCimeChannelItem(raw);
+      if (!parsed) return;
+      const key = parsed.channelId.toLowerCase();
+      const existing = channelMap.get(key);
+      if (!existing) {
+        channelMap.set(key, parsed);
+      } else if (parsed.isLive && (!existing.isLive || !existing.title || parsed.viewers > existing.viewers)) {
+        channelMap.set(key, {
+          ...existing,
+          ...parsed,
+          avatar: parsed.avatar || existing.avatar,
+          thumbnail: parsed.thumbnail || existing.thumbnail,
+          liveThumb: parsed.liveThumb || existing.liveThumb
+        });
+      }
+    };
+
+    // 1. 主接口分页拉取已关注频道 (/api/app/channels/following 返回 data.followings)
+    for (let page = 1; page <= 5; page++) {
       try {
-        const res = await fetch(url, {
-          headers: {
-            'Accept': 'application/json',
-            'Origin': 'https://ci.me',
-            'Referer': 'https://ci.me/'
-          },
+        const res = await fetch(`https://ci.me/api/app/channels/following?limit=32&order=LIVE&page=${page}`, {
+          headers,
           credentials: 'include'
         });
-        if (res.ok) {
-          const json = await res.json();
-          const items = Array.isArray(json)
-            ? json
-            : (json.data?.channels || json.data?.items || json.data?.list || (Array.isArray(json.data) ? json.data : []));
-          if (items && items.length > 0) {
-            channels = items;
-            break;
-          }
-        }
+        if (!res.ok) break;
+        const json = await res.json();
+        const items = Array.isArray(json)
+          ? json
+          : (json.data?.followings || json.data?.following || json.data?.channels || json.data?.items || json.data?.list || (Array.isArray(json.data) ? json.data : []));
+        if (!Array.isArray(items) || items.length === 0) break;
+        for (const item of items) mergeItem(item);
+
+        const pag = json.data?.pagination;
+        const hasNext = pag
+          ? Boolean(pag.hasNext ?? pag.hasMore ?? (pag.totalPages ? page < pag.totalPages : items.length >= 32))
+          : items.length >= 32;
+        if (!hasNext) break;
       } catch (e) {
-        // 继续尝试备用接口
+        break;
       }
     }
 
-    // 若未登录或无关注主播，严格返回空数组，绝不获取热门/推荐主播
-    if (!channels || channels.length === 0) {
-      return [];
+    // 2. 补充/兜底拉取侧边栏接口中的 data.following (严格忽略 popular / recent，绝不混入未关注主播)
+    try {
+      const recRes = await fetch('https://ci.me/api/app/channels/recommended?categoryLimit=5', {
+        headers,
+        credentials: 'include'
+      });
+      if (recRes.ok) {
+        const recJson = await recRes.json();
+        const recFollows = recJson?.data?.following;
+        if (Array.isArray(recFollows)) {
+          for (const item of recFollows) mergeItem(item);
+        }
+      }
+    } catch (e) {}
+
+    // 3. 若仍未发现正在直播的关注主播或列表为空，尝试 following-lives 接口
+    const hasAnyLive = Array.from(channelMap.values()).some((item) => item.isLive);
+    if (channelMap.size === 0 || !hasAnyLive) {
+      try {
+        const livesRes = await fetch('https://ci.me/api/app/channels/following-lives?limit=32', {
+          headers,
+          credentials: 'include'
+        });
+        if (livesRes.ok) {
+          const livesJson = await livesRes.json();
+          const liveItems = Array.isArray(livesJson)
+            ? livesJson
+            : (livesJson.data?.lives || livesJson.data?.followings || livesJson.data?.items || livesJson.data?.channels || (Array.isArray(livesJson.data) ? livesJson.data : []));
+          if (Array.isArray(liveItems)) {
+            for (const item of liveItems) mergeItem(item);
+          }
+        }
+      } catch (e) {}
     }
 
-    return channels.map((ch) => {
-      const channelObj = ch.channel || ch;
-      const liveObj = ch.live || channelObj.live;
-      const isLive = Boolean(ch.isLive || channelObj.isLive || liveObj?.isLive || liveObj);
-      const slug = channelObj.slug || channelObj.id || ch.slug || ch.id || '';
-      const avatar = channelObj.imageUrl || ch.imageUrl || channelObj.avatarUrl || '';
-      const liveThumb = liveObj?.thumbnailUrl || liveObj?.coverUrl || avatar;
-      return {
-        platform: 'cime',
-        channelId: slug,
-        streamer: channelObj.name || channelObj.slug || ch.name || slug,
-        isLive: isLive,
-        title: liveObj?.title || channelObj.description || '',
-        viewers: liveObj?.curViewerCnt || liveObj?.viewers || 0,
-        thumbnail: liveThumb,
-        avatar: avatar,
-        updatedAt: Date.now()
-      };
-    });
+    return Array.from(channelMap.values());
   }
 
   /**

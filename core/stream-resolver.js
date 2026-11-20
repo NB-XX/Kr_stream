@@ -925,8 +925,8 @@ export class StreamResolver {
       subtitlesSupported: true,
       viewers: liveData.curViewerCnt || 0,
       category: liveData.category?.name || 'Live',
-      openTime: liveData.startedAt ? new Date(liveData.startedAt).getTime() : (liveData.createdAt ? new Date(liveData.createdAt).getTime() : 0),
-      openDate: liveData.startedAt || liveData.createdAt || '',
+      openTime: liveData.openedAt ? new Date(liveData.openedAt).getTime() : (liveData.startedAt ? new Date(liveData.startedAt).getTime() : (liveData.createdAt ? new Date(liveData.createdAt).getTime() : 0)),
+      openDate: liveData.openedAt || liveData.startedAt || liveData.createdAt || '',
       thumbnail: liveData.imageUrl || liveData.channel?.imageUrl || ''
     };
   }

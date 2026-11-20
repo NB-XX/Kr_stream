@@ -78,7 +78,7 @@ function initResolver() {
           resPlatform.textContent = (data.platform || 'LIVE').toUpperCase();
           resName.textContent = data.streamer || data.channelId;
           resTitle.textContent = data.title || (data.isLive ? '正在直播' : '未开播');
-          resStatus.textContent = data.isLive ? '● 直播中' : '离线';
+          resStatus.textContent = data.isLive ? '直播中' : '离线';
           resStatus.style.color = data.isLive ? '#ef4444' : '#94a3b8';
 
           btnPlaySingle.disabled = !data.isLive;
@@ -188,7 +188,7 @@ function initResolver() {
         },
         () => {
           btnFavAdd.textContent = '已关注';
-          setTimeout(() => (btnFavAdd.textContent = '⭐ 关注'), 2000);
+          setTimeout(() => (btnFavAdd.textContent = '关注'), 2000);
         }
       );
     }
@@ -199,9 +199,9 @@ function initResolver() {
 function initFavorites() {
   const btnRefresh = document.getElementById('btn-refresh-favs');
   btnRefresh.addEventListener('click', () => {
-    btnRefresh.textContent = '正在检测...';
+    btnRefresh.textContent = '检测中...';
     chrome.runtime.sendMessage({ action: 'CHECK_FAVORITES_LIVE' }, () => {
-      btnRefresh.textContent = '↻ 刷新开播状态';
+      btnRefresh.textContent = '刷新状态';
       loadFavoritesList();
     });
   });
@@ -216,7 +216,7 @@ function loadFavoritesList() {
     countLabel.textContent = `已关注 ${favs.length} 位主播`;
 
     if (favs.length === 0) {
-      container.innerHTML = '<div style="color:#94a3b8;font-size:12px;text-align:center;padding:16px;">关注列表为空，请在上方解析后点击【关注】添加。</div>';
+      container.innerHTML = '<div style="color:#94a3b8;font-size:12px;text-align:center;padding:16px;">暂无关注</div>';
       return;
     }
 
@@ -231,7 +231,7 @@ function loadFavoritesList() {
             <span class="platform-badge">${item.platform.toUpperCase()}</span>
             <span class="fav-name">${item.streamer || item.channelId}</span>
             <span class="live-status" style="color: ${item.isLive ? '#ef4444' : '#94a3b8'}">
-              ${item.isLive ? '● 直播中' : '离线'}
+              ${item.isLive ? '直播中' : '离线'}
             </span>
           </div>
           <div class="fav-sub">${item.title || item.channelId}</div>
@@ -297,8 +297,8 @@ function initSettings() {
     chrome.runtime.sendMessage(
       { action: 'SAVE_SETTINGS', payload: newSettings },
       () => {
-        btnSave.textContent = '已保存！';
-        setTimeout(() => (btnSave.textContent = '保存配置'), 1500);
+        btnSave.textContent = '已保存';
+        setTimeout(() => (btnSave.textContent = '保存'), 1500);
       }
     );
   });

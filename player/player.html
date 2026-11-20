@@ -48,17 +48,13 @@
           <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M1.5 8a6.5 6.5 0 0111.4-4.3L14.5 5M14.5 1.5V5h-3.5M14.5 8a6.5 6.5 0 01-11.4 4.3L1.5 11M1.5 14.5V11H5"/>
           </svg>
-          <span id="sync-btn-text">一键导入并同步关注主播</span>
+          <span id="sync-btn-text">同步关注</span>
         </button>
-        <div class="sync-auto-indicator">
-          <span class="sync-dot"></span>
-          <span>状态监控轮询中 (20s)</span>
-        </div>
       </div>
 
       <!-- 直播源输入 -->
       <div class="sidebar-search">
-        <input type="text" id="custom-stream-input" placeholder="输入直播链接或主播 ID..." spellcheck="false" autocomplete="off" />
+        <input type="text" id="custom-stream-input" placeholder="直播链接或主播 ID" spellcheck="false" autocomplete="off" />
         <button id="btn-custom-play" class="btn-secondary">播放</button>
       </div>
 
@@ -73,9 +69,7 @@
 
       <!-- 主播列表容器 -->
       <div class="streamer-list" id="streamer-list">
-        <div class="empty-state">
-          点击上方【一键导入并同步关注主播】，或在输入栏粘贴直播间链接开始播放。
-        </div>
+        <div class="empty-state">暂无主播</div>
       </div>
     </aside>
 
@@ -84,22 +78,22 @@
       <!-- 顶部控制条 -->
       <header class="top-bar">
         <div class="top-left">
-          <!-- 布局模板管理器 (支持将多屏窗口及主播搭配保存为独立模板随时切换) -->
+          <!-- 布局模板管理器 -->
           <div class="layout-template-bar">
             <span class="layout-label">布局模板</span>
-            <select class="template-select" id="template-select" title="选择或切换已保存的多屏布局模板">
+            <select class="template-select" id="template-select" title="选择模板">
               <option value="current">当前工作区</option>
             </select>
-            <button class="btn-secondary" id="btn-save-template" title="将当前窗口中的主播组合与排布保存为新模板">
+            <button class="btn-secondary" id="btn-save-template" title="保存模板">
               <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
                 <path d="M3 2h8l3 3v9H2V2h1zM4 2v4h6V2M5 14v-5h6v5"/>
               </svg>
               <span>保存模板</span>
             </button>
-            <button class="btn-subtle" id="btn-delete-template" title="删除选中的模板" style="display:none;">删除模板</button>
+            <button class="btn-subtle" id="btn-delete-template" title="删除模板" style="display:none;">删除模板</button>
           </div>
 
-          <button class="btn-secondary" id="btn-add-window" title="在网格中新增一个独立播放窗口">
+          <button class="btn-secondary" id="btn-add-window" title="新增窗口">
             <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M8 2v12M2 8h12"/>
             </svg>
@@ -108,7 +102,7 @@
         </div>
 
         <div class="top-right">
-          <button class="btn-subtle" id="btn-clear-all" title="重置并清空所有窗口">清空网格</button>
+          <button class="btn-subtle" id="btn-clear-all" title="清空窗口">清空网格</button>
         </div>
       </header>
 
@@ -119,7 +113,7 @@
     </div>
 
     <!-- 左侧收起后浮动展开按钮 -->
-    <button class="sidebar-expand-tab" id="btn-expand-sidebar" title="展开关注主播列表">
+    <button class="sidebar-expand-tab" id="btn-expand-sidebar" title="展开主播列表">
       <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
         <path d="M6 3l5 5-5 5"/>
       </svg>
@@ -133,11 +127,11 @@
           <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
             <path d="M2.5 3.5h11M2.5 7h7M2.5 10.5h11M2.5 14h6"/>
           </svg>
-          <span>历史转录字幕</span>
+          <span>历史字幕</span>
         </div>
         <div class="drawer-header-actions">
-          <select class="drawer-slot-select" id="drawer-slot-select" title="选择查看窗口"></select>
-          <button class="btn-icon" id="btn-close-right-drawer" title="收起字幕抽屉">
+          <select class="drawer-slot-select" id="drawer-slot-select" title="选择窗口"></select>
+          <button class="btn-icon" id="btn-close-right-drawer" title="收起">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M4 4l8 8M12 4l-8 8"/>
             </svg>
@@ -146,12 +140,8 @@
       </div>
 
       <div class="drawer-toolbar">
-        <div class="drawer-buffer-info">
-          <span class="status-dot live"></span>
-          <span>本地缓存: 10分钟实时回溯 (点击字幕跳转播放)</span>
-        </div>
         <div class="drawer-search-bar">
-          <input type="text" id="sub-search-input" placeholder="搜索历史字幕关键词..." spellcheck="false" autocomplete="off" />
+          <input type="text" id="sub-search-input" placeholder="搜索字幕..." spellcheck="false" autocomplete="off" />
         </div>
         <div class="drawer-batch-actions">
           <div class="batch-select-wrap">
@@ -159,19 +149,19 @@
             <button class="btn-chip" id="btn-sub-clear-select">清空</button>
             <span class="selected-count-label" id="selected-sub-count">已选: 0</span>
           </div>
-          <button class="btn-primary btn-gen-long-image" id="btn-gen-long-image" title="将所选字幕与对应画面批量拼接为长图">
+          <button class="btn-primary btn-gen-long-image" id="btn-gen-long-image" title="生成字幕长图">
             <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5">
               <rect x="2" y="2" width="12" height="12" rx="1.5"/>
               <path d="M2 11l3.5-3.5a1 1 0 011.4 0l4.5 4.5"/>
               <circle cx="5" cy="5.5" r="1"/>
             </svg>
-            <span>转换字幕长图</span>
+            <span>生成长图</span>
           </button>
         </div>
       </div>
 
       <div class="drawer-sub-list" id="drawer-sub-list">
-        <div class="sub-empty-tip">暂无转录字幕记录，开启实时字幕后自动记录...</div>
+        <div class="sub-empty-tip">暂无字幕</div>
       </div>
     </aside>
 
@@ -179,7 +169,7 @@
     <div class="modal-overlay" id="modal-long-image" style="display:none;">
       <div class="modal-box long-image-modal-box">
         <div class="modal-header">
-          <div class="modal-title">字幕长图生成器</div>
+          <div class="modal-title">字幕长图</div>
           <button class="btn-icon" id="btn-close-modal">
             <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M4 4l8 8M12 4l-8 8"/>
@@ -194,12 +184,12 @@
         </div>
         <div class="modal-footer">
           <div class="long-image-opts">
-            <label><input type="radio" name="long-img-style" value="movie" checked> 经典台词切片模式 (首图完整+台词截条)</label>
-            <label><input type="radio" name="long-img-style" value="stacked"> 全画面平铺模式 (每句对应完整截帧)</label>
+            <label><input type="radio" name="long-img-style" value="movie" checked> 台词切片</label>
+            <label><input type="radio" name="long-img-style" value="stacked"> 全图平铺</label>
           </div>
           <div class="modal-btn-group">
-            <button class="btn-secondary" id="btn-copy-long-image">复制长图到剪贴板</button>
-            <button class="btn-primary" id="btn-download-long-image">下载长图 (PNG)</button>
+            <button class="btn-secondary" id="btn-copy-long-image">复制</button>
+            <button class="btn-primary" id="btn-download-long-image">下载 PNG</button>
           </div>
         </div>
       </div>
