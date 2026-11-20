@@ -3648,6 +3648,12 @@ class AppHub {
     chrome.runtime.sendMessage({ action: 'GET_FORCE_DIRECT_PROXY' }, (res) => {
       if (res && res.success && res.data) {
         this.toggleForceDirect.checked = Boolean(res.data.enabled);
+      } else if (typeof chrome !== 'undefined' && chrome.proxy?.settings) {
+        chrome.proxy.settings.get({ incognito: false }, (details) => {
+          if (details?.value?.mode === 'direct' && details?.levelOfControl === 'controlled_by_this_extension') {
+            this.toggleForceDirect.checked = true;
+          }
+        });
       }
     });
 
@@ -3660,9 +3666,35 @@ class AppHub {
             : '已恢复默认代理设置 (解除直连强制控制)';
           this.showGlobalToast(toastMsg);
         } else {
+          // 备用：尝试在当前扩展页面上下文中直接调度 chrome.proxy
+          if (typeof chrome !== 'undefined' && chrome.proxy?.settings) {
+            const finishProxy = () => {
+              if (chrome.runtime?.lastError) {
+                e.target.checked = !enabled;
+                this.showGlobalToast('直连设置失败: ' + chrome.runtime.lastError.message, 3500);
+              } else {
+                chrome.storage?.local?.set({ krstream_force_direct: enabled }).catch(() => {});
+                const toastMsg = enabled 
+                  ? '已开启强制全局直连 (已清空并绕过本地其他插件代理)' 
+                  : '已恢复默认代理设置 (解除直连强制控制)';
+                this.showGlobalToast(toastMsg);
+              }
+            };
+            if (enabled) {
+              chrome.proxy.settings.set({ value: { mode: 'direct' }, scope: 'regular' }, finishProxy);
+            } else {
+              chrome.proxy.settings.clear({ scope: 'regular' }, finishProxy);
+            }
+            return;
+          }
+
           e.target.checked = !enabled;
-          const err = res?.error || '无法更改代理设置 (可能受到其他更高优先级扩展限制)';
-          this.showGlobalToast('直连设置失败: ' + err, 3500);
+          const err = res?.error || '无法更改代理设置';
+          if (err.includes('未知操作') || err.includes('SET_FORCE_DIRECT_PROXY')) {
+            alert('扩展后台尚未更新：由于本次更新在 manifest.json 中新增了 proxy 权限与后台服务，请先在浏览器打开 chrome://extensions 页面，找到 KRStream 点击右下角的“重新加载 (🔄)”图标刷新扩展即可。');
+          } else {
+            this.showGlobalToast('直连设置失败: ' + err, 3500);
+          }
         }
       });
     });
