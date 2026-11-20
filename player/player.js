@@ -125,11 +125,60 @@ class StreamSlot {
           <div class="loading-msg" id="loading-msg-${this.slotId}">正在连接直播源...</div>
         </div>
 
+        <!-- 初始空闲引导卡 (漫画式三步使用指引，无转圈，体验舒适) -->
         <div class="slot-guide-comic ${this.currentStreamData ? 'hidden' : ''}" id="guide-comic-${this.slotId}">
+          <div class="comic-header">
+            <span class="comic-tag">KRSTREAM QUICK START</span>
+            <span class="comic-title">多屏工作台快速指南</span>
+          </div>
+          <div class="comic-panels">
+            <!-- 漫画第 1 格 -->
+            <div class="comic-panel">
+              <div class="panel-step">01. 选台</div>
+              <div class="panel-art">
+                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="44" height="32" rx="2" stroke="#3f3f46"/>
+                  <line x1="14" y1="2" x2="14" y2="34" stroke="#3f3f46" stroke-dasharray="2 2"/>
+                  <rect x="4" y="6" width="7" height="4" fill="#00aeec"/>
+                  <rect x="4" y="13" width="7" height="4" fill="#3f3f46"/>
+                  <rect x="4" y="20" width="7" height="4" fill="#3f3f46"/>
+                  <path d="M22 18l12-7v14z" fill="#00aeec"/>
+                </svg>
+              </div>
+              <div class="panel-caption">点击左侧关注主播<br>或输入直播链接直连</div>
+            </div>
+            <!-- 漫画第 2 格 -->
+            <div class="comic-panel">
+              <div class="panel-step">02. 布局</div>
+              <div class="panel-art">
+                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="20" height="14" rx="2" stroke="#00aeec"/>
+                  <rect x="26" y="2" width="20" height="14" rx="2" stroke="#3f3f46"/>
+                  <rect x="2" y="20" width="20" height="14" rx="2" stroke="#3f3f46"/>
+                  <rect x="26" y="20" width="20" height="14" rx="2" stroke="#3f3f46"/>
+                  <path d="M12 9h4M14 7v4" stroke="#00aeec"/>
+                </svg>
+              </div>
+              <div class="panel-caption">自由增加多窗口同播<br>支持保存为布局模板</div>
+            </div>
+            <!-- 漫画第 3 格 -->
+            <div class="comic-panel">
+              <div class="panel-step">03. 互动</div>
+              <div class="panel-art">
+                <svg viewBox="0 0 48 36" width="48" height="36" fill="none" stroke="currentColor" stroke-width="1.5">
+                  <rect x="2" y="2" width="44" height="32" rx="2" stroke="#3f3f46"/>
+                  <path d="M6 10h18M6 16h12" stroke="#a1a1aa"/>
+                  <rect x="6" y="22" width="26" height="7" rx="1" fill="rgba(0,174,236,0.15)" stroke="#00aeec"/>
+                  <polygon points="38 7 32 17 38 17 36 27 44 14 38 14" fill="#10b981"/>
+                </svg>
+              </div>
+              <div class="panel-caption">右键字幕双语翻译<br>右键追帧设安全延迟</div>
+            </div>
+          </div>
           <div class="comic-action">
             <button class="btn-comic-pick" id="btn-comic-pick-${this.slotId}">
               <svg viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 8h12M8 2l6 6-6 6"/></svg>
-              <span>选择直播</span>
+              <span>从左侧选择开播主播</span>
             </button>
           </div>
         </div>

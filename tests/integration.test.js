@@ -458,7 +458,7 @@ async function runTests() {
   const latestPopupHtml = fs.readFileSync('popup/popup.html', 'utf8');
   assert(!latestDanmakuJs.includes('GPU 硬件加速与防抖动分轨'), 'Danmaku settings must not show verbose filler text');
   assert(!latestPlayerJs.includes('硬性保护：停止阈值'), 'Catchup menu must not show verbose notice text');
-  assert(!latestPlayerJs.includes('多屏工作台快速指南'), 'Empty slot must not show verbose comic guide');
+  assert(latestPlayerJs.includes('comic-panels'), 'Empty slot 3-step comic guide must be preserved');
   assert(!latestPlayerHtml.includes('状态监控轮询中'), 'Sidebar must not show polling status filler');
   assert(!latestPopupHtml.includes('setting-desc') && !latestPopupHtml.includes('tips-box'), 'Popup must not show verbose setting descriptions or tips box');
   console.log('  Pass: Chzzk/CI.ME real usernames, CI.ME following parser, and minimalist UI verified.');
