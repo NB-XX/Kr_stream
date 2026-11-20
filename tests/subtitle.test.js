@@ -121,6 +121,14 @@ async function runSubtitleTests() {
   assert(!subEngineCode.includes("this.btnEl.addEventListener('mouseenter'"), 'Hover timer must be removed to avoid accidental popups');
   console.log('  Pass: Subtitle click toggle & right-click settings verified.');
 
+  console.log('[Test 8] SOOP subtitles never display streamer name tag');
+  // For SOOP streams, speakerEl must remain hidden (display: none)
+  engine.slot.currentStreamData = { platform: 'soop', streamer: 'madaomm' };
+  mockSpeaker.style.display = 'inline-block';
+  engine.renderSubtitle('madaomm', { primary: '今天也辛苦大家了' });
+  assert.strictEqual(mockSpeaker.style.display, 'none', 'SOOP subtitle must never show streamer name tag');
+  console.log('  Pass: SOOP streamer name tag strictly suppressed on video overlay.');
+
   console.log('\nAll subtitle tests passed successfully.');
 }
 

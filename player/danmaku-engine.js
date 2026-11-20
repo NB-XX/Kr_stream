@@ -659,7 +659,7 @@ export class DanmakuEngine {
               console.log(`[KRStream] 窗口 #${this.slot.slotId} 收到 SOOP 官方实时字幕 [${lang}]: ${subText}`);
               if (this.slot.subtitleEngine) {
                 this.slot.subtitleEngine.lastWsSubtitleTime = Date.now();
-                this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), lang, streamData.streamer || channelId);
+                this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), lang, '');
               }
             }
             return;
@@ -684,7 +684,7 @@ export class DanmakuEngine {
             const rawSub = parts[idIndex + 2];
             const langCode = parts[idIndex + 1];
             if (rawSub && typeof rawSub === 'string' && langCode && langCode.length < 5) {
-              this.slot.subtitleEngine.handleSubtitleReceived(rawSub.trim(), langCode, streamData.streamer || channelId);
+              this.slot.subtitleEngine.handleSubtitleReceived(rawSub.trim(), langCode, '');
             }
           }
         }
@@ -788,7 +788,7 @@ export class DanmakuEngine {
             if (subText && typeof subText === 'string') {
               if (this.slot.subtitleEngine) {
                 this.slot.subtitleEngine.lastWsSubtitleTime = Date.now();
-                this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), String(langNum), data.streamer || channelId);
+                this.slot.subtitleEngine.handleSubtitleReceived(subText.trim(), String(langNum), '');
               }
             }
           }

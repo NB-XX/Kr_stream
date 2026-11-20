@@ -3400,7 +3400,7 @@ class AppHub {
     this.sidebar = document.getElementById('sidebar');
     this.btnToggleSidebar = document.getElementById('btn-toggle-sidebar');
     this.btnExpandSidebar = document.getElementById('btn-expand-sidebar');
-    this.btnDetect = document.getElementById('btn-detect-accounts');
+    this.toggleForceDirect = document.getElementById('toggle-force-direct');
     this.btnSyncAll = document.getElementById('btn-sync-all');
     this.customInput = document.getElementById('custom-stream-input');
     this.btnCustomPlay = document.getElementById('btn-custom-play');
@@ -3570,8 +3570,8 @@ class AppHub {
     });
 
     // 账号检测与同步
-    this.btnDetect.addEventListener('click', () => this.checkAccounts());
     this.btnSyncAll.addEventListener('click', () => this.syncFollowings());
+    this.initForceDirectToggle();
 
     // 过滤标签切换
     document.querySelectorAll('.filter-btn').forEach((btn) => {
@@ -3639,6 +3639,51 @@ class AppHub {
         }
       }
     });
+  }
+
+  initForceDirectToggle() {
+    if (!this.toggleForceDirect) return;
+
+    // 获取当前直连状态并初始化开关
+    chrome.runtime.sendMessage({ action: 'GET_FORCE_DIRECT_PROXY' }, (res) => {
+      if (res && res.success && res.data) {
+        this.toggleForceDirect.checked = Boolean(res.data.enabled);
+      }
+    });
+
+    this.toggleForceDirect.addEventListener('change', (e) => {
+      const enabled = e.target.checked;
+      chrome.runtime.sendMessage({ action: 'SET_FORCE_DIRECT_PROXY', payload: { enabled } }, (res) => {
+        if (res && res.success) {
+          const toastMsg = enabled 
+            ? '已开启强制全局直连 (已清空并绕过本地其他插件代理)' 
+            : '已恢复默认代理设置 (解除直连强制控制)';
+          this.showGlobalToast(toastMsg);
+        } else {
+          e.target.checked = !enabled;
+          const err = res?.error || '无法更改代理设置 (可能受到其他更高优先级扩展限制)';
+          this.showGlobalToast('直连设置失败: ' + err, 3500);
+        }
+      });
+    });
+  }
+
+  showGlobalToast(message, durationMs = 2500) {
+    let toast = document.getElementById('global-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'global-toast';
+      toast.className = 'global-toast';
+      document.body.appendChild(toast);
+    }
+    toast.textContent = message;
+    toast.classList.remove('active');
+    void toast.offsetWidth;
+    toast.classList.add('active');
+    if (this._globalToastTimer) clearTimeout(this._globalToastTimer);
+    this._globalToastTimer = setTimeout(() => {
+      toast.classList.remove('active');
+    }, durationMs);
   }
 
   async syncFollowings() {

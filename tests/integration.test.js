@@ -400,6 +400,24 @@ async function runTests() {
 
   console.log('  Pass: Manifest integrity and all referenced file paths verified.');
 
+  console.log('[Test 18] Global Direct Proxy Bypass Switch & Background Proxy Handler');
+  assert(manifest.permissions && manifest.permissions.includes('proxy'), 'manifest.json must request proxy permission');
+
+  const currentBgCode = fs.readFileSync('background.js', 'utf8');
+  assert(currentBgCode.includes('SET_FORCE_DIRECT_PROXY'), 'background.js must handle SET_FORCE_DIRECT_PROXY');
+  assert(currentBgCode.includes('GET_FORCE_DIRECT_PROXY'), 'background.js must handle GET_FORCE_DIRECT_PROXY');
+  assert(currentBgCode.includes("mode: 'direct'"), 'background.js must configure direct proxy mode');
+
+  const playerHtmlCode = fs.readFileSync('player/player.html', 'utf8');
+  assert(!playerHtmlCode.includes('id="btn-detect-accounts"'), 'Redundant btn-detect-accounts button must be removed');
+  assert(playerHtmlCode.includes('id="toggle-force-direct"'), 'Global direct proxy toggle switch must exist in player.html');
+  assert(playerHtmlCode.includes('direct-proxy-toggle'), 'direct-proxy-toggle CSS class must exist in player.html');
+
+  assert(playerJsCode.includes('initForceDirectToggle'), 'player.js must implement initForceDirectToggle');
+  assert(playerJsCode.includes('showGlobalToast'), 'player.js must implement showGlobalToast');
+
+  console.log('  Pass: Global direct proxy switch, background messaging, and UI elements verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

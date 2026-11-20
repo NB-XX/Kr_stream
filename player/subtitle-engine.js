@@ -1001,21 +1001,21 @@ export class SubtitleEngine {
               const latestS = sList[sList.length - 1];
               lastTime = Math.max(latestP?.time || 0, latestS?.time || 0);
               if (latestS?.msg) {
-                this.handleSubtitleReceived(latestS.msg, secObj.id, speakerName);
+                this.handleSubtitleReceived(latestS.msg, secObj.id, '');
               }
               if (latestP?.msg) {
-                this.handleSubtitleReceived(latestP.msg, primaryObj.id, speakerName);
+                this.handleSubtitleReceived(latestP.msg, primaryObj.id, '');
               }
             } else {
               const newS = sList.filter(item => item.time > lastTime);
               const newP = pList.filter(item => item.time > lastTime);
               for (const item of newS) {
                 lastTime = Math.max(lastTime, item.time);
-                this.handleSubtitleReceived(item.msg, secObj.id, speakerName);
+                this.handleSubtitleReceived(item.msg, secObj.id, '');
               }
               for (const item of newP) {
                 lastTime = Math.max(lastTime, item.time);
-                this.handleSubtitleReceived(item.msg, primaryObj.id, speakerName);
+                this.handleSubtitleReceived(item.msg, primaryObj.id, '');
               }
             }
           }
@@ -1031,12 +1031,12 @@ export class SubtitleEngine {
               if (lastTime === 0) {
                 const latest = list[list.length - 1];
                 lastTime = latest.time;
-                this.handleSubtitleReceived(latest.msg, primaryObj.id, speakerName);
+                this.handleSubtitleReceived(latest.msg, primaryObj.id, '');
               } else {
                 const newItems = list.filter(item => item.time > lastTime);
                 for (const item of newItems) {
                   lastTime = Math.max(lastTime, item.time);
-                  this.handleSubtitleReceived(item.msg, primaryObj.id, speakerName);
+                  this.handleSubtitleReceived(item.msg, primaryObj.id, '');
                 }
               }
             }
@@ -1059,7 +1059,9 @@ export class SubtitleEngine {
   renderSubtitle(speaker, content = {}) {
     if (!this.overlayEl || !this.boxEl) return;
 
-    if (speaker && speaker.trim()) {
+    const isSoop = this.slot.currentStreamData?.platform === 'soop';
+    // SOOP 平台字幕仅展示字幕本身，绝不附加或渲染当前主播姓名标签
+    if (!isSoop && speaker && speaker.trim() && speaker.trim() !== this.slot.currentStreamData?.streamer) {
       this.speakerEl.textContent = speaker.trim();
       this.speakerEl.style.display = 'inline-block';
     } else {
