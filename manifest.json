@@ -8,8 +8,7 @@
     "cookies",
     "contextMenus",
     "declarativeNetRequest",
-    "declarativeNetRequestWithHostAccess",
-    "proxy"
+    "declarativeNetRequestWithHostAccess"
   ],
   "host_permissions": [
     "*://*.sooplive.com/*",

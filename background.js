@@ -10,70 +10,6 @@ import { Storage } from './core/storage.js';
 // 初始化三大平台动态 DNR 鉴权与流媒体放行规则 (严格限定 initiatorDomains 为插件自身)
 AccountManager.setupAllDynamicRules().catch(() => {});
 
-// 全局强制直连设置管理 (绕过本地其他代理插件)
-async function setForceDirectProxy(enabled) {
-  if (typeof chrome === 'undefined' || !chrome.proxy?.settings) {
-    throw new Error('当前环境不支持 chrome.proxy 接口');
-  }
-  return new Promise((resolve, reject) => {
-    if (enabled) {
-      chrome.proxy.settings.set(
-        { value: { mode: 'direct' }, scope: 'regular' },
-        () => {
-          if (chrome.runtime?.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            chrome.storage?.local?.set({ krstream_force_direct: true }).catch(() => {});
-            resolve({ success: true, mode: 'direct' });
-          }
-        }
-      );
-    } else {
-      chrome.proxy.settings.clear(
-        { scope: 'regular' },
-        () => {
-          if (chrome.runtime?.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            chrome.storage?.local?.set({ krstream_force_direct: false }).catch(() => {});
-            resolve({ success: true, mode: 'cleared' });
-          }
-        }
-      );
-    }
-  });
-}
-
-async function getForceDirectProxy() {
-  if (typeof chrome === 'undefined' || !chrome.proxy?.settings) {
-    return { enabled: false, supported: false };
-  }
-  return new Promise((resolve) => {
-    chrome.proxy.settings.get({ incognito: false }, (details) => {
-      const mode = details?.value?.mode;
-      const isControlled = details?.levelOfControl === 'controlled_by_this_extension';
-      chrome.storage?.local?.get(['krstream_force_direct'], (stored) => {
-        const storedVal = Boolean(stored?.krstream_force_direct);
-        resolve({
-          enabled: storedVal || (mode === 'direct' && isControlled),
-          mode: mode || 'default',
-          levelOfControl: details?.levelOfControl || '',
-          supported: true
-        });
-      });
-    });
-  });
-}
-
-// 恢复全局直连状态 (若先前开启过)
-if (typeof chrome !== 'undefined' && chrome.storage?.local && chrome.proxy?.settings) {
-  chrome.storage.local.get(['krstream_force_direct'], (stored) => {
-    if (stored?.krstream_force_direct) {
-      chrome.proxy.settings.set({ value: { mode: 'direct' }, scope: 'regular' }, () => {});
-    }
-  });
-}
-
 // 监听浏览器 Cookie 变动，当 SOOP / Naver 登录态变化时自动热更新动态凭证规则
 if (typeof chrome !== 'undefined' && chrome.cookies?.onChanged) {
   chrome.cookies.onChanged.addListener((changeInfo) => {
@@ -171,18 +107,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     case 'SAVE_SETTINGS':
       Storage.saveSettings(payload).then((settings) => sendResponse({ success: true, data: settings }));
-      return true;
-
-    case 'SET_FORCE_DIRECT_PROXY':
-      setForceDirectProxy(Boolean(payload?.enabled))
-        .then((res) => sendResponse({ success: true, data: res }))
-        .catch((err) => sendResponse({ success: false, error: err.message }));
-      return true;
-
-    case 'GET_FORCE_DIRECT_PROXY':
-      getForceDirectProxy()
-        .then((res) => sendResponse({ success: true, data: res }))
-        .catch((err) => sendResponse({ success: false, error: err.message }));
       return true;
 
     default:
