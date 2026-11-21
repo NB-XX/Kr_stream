@@ -463,6 +463,51 @@ async function runTests() {
   assert(!latestPopupHtml.includes('setting-desc') && !latestPopupHtml.includes('tips-box'), 'Popup must not show verbose setting descriptions or tips box');
   console.log('  Pass: Chzzk/CI.ME real usernames, CI.ME following parser, and minimalist UI verified.');
 
+  console.log('[Test 20] YouTube-Style SuperChat / Gift / Subscription Banner & History Engine');
+  const { SuperChatEngine } = await import('../player/superchat-engine.js');
+
+  // 1. Verify YouTube SC tier color mapping
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'subscription' }).name, 'sub-green', 'Subscriptions must use YouTube green tier');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'gift' }).name, 'sub-green', 'Gifted subs must use YouTube green tier');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 1000 }).name, 'sc-blue', '1,000 Cheese must map to sc-blue');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 5000 }).name, 'sc-cyan', '5,000 Cheese must map to sc-cyan');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 10000 }).name, 'sc-yellow', '10,000 Cheese must map to sc-yellow');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 50000 }).name, 'sc-orange', '50,000 Cheese must map to sc-orange');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 100000 }).name, 'sc-red', '100,000 Cheese must map to sc-red');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'soop', amount: 100 }).name, 'sc-yellow', '100 SOOP balloons (10,000 KRW) must map to sc-yellow');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'soop', amount: 1000 }).name, 'sc-red', '1000 SOOP balloons (100,000 KRW) must map to sc-red');
+
+  // 2. Verify history recording persists even when display switch is toggled off
+  const scEngine = new SuperChatEngine({ slotId: 'test-sc', dom: null, currentStreamData: { platform: 'chzzk' } });
+  scEngine.enabled = false;
+  scEngine.handleEvent({
+    type: 'donation',
+    platform: 'chzzk',
+    sender: '测试金主',
+    avatar: 'https://example.com/avatar.png',
+    amount: 10000,
+    amountLabel: '10,000 치즈',
+    message: '加油！'
+  });
+  assert.strictEqual(scEngine.history.length, 1, 'History must still record donation when floating display is disabled');
+  assert.strictEqual(scEngine.history[0].sender, '测试金主');
+  assert.strictEqual(scEngine.history[0].avatar, 'https://example.com/avatar.png');
+  assert.strictEqual(scEngine.history[0].message, '加油！');
+
+  // 3. Verify HTML escaping & card markup structure
+  const cardHtml = scEngine.buildCardHtml(scEngine.history[0], false);
+  assert(cardHtml.includes('yt-sc-header') && cardHtml.includes('yt-sc-body'), 'Card HTML must include header and body');
+  assert(cardHtml.includes('测试金主') && cardHtml.includes('10,000 치즈') && cardHtml.includes('加油！'), 'Card HTML must include sender, amount, and message');
+
+  // 4. Verify wiring in player.js, danmaku-engine.js, and player.css
+  assert(latestPlayerJs.includes('SuperChatEngine'), 'player.js must wire SuperChatEngine');
+  assert(latestDanmakuJs.includes('cmd === 93102'), 'danmaku-engine.js must parse Chzzk cmd 93102 donations/subscriptions');
+  assert(latestDanmakuJs.includes("opcode === '0018'") && latestDanmakuJs.includes("opcode === '0091'"), 'danmaku-engine.js must parse SOOP balloon and subscription opcodes');
+  const latestCss = fs.readFileSync('player/player.css', 'utf8');
+  assert(latestCss.includes('.slot-sc-overlay') && latestCss.includes('.yt-sc-card') && latestCss.includes('.sc-history-panel'), 'player.css must style top-left SC overlay, YouTube cards, and history panel');
+
+  console.log('  Pass: YouTube-style SC tiers, display toggle, history logging, and WS integration verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

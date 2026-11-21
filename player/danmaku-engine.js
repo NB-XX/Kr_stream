@@ -638,6 +638,63 @@ export class DanmakuEngine {
             }
           }
 
+          // SOOP 打赏与订阅事件 (0018: 星球, 0033: 广告气球, 0091/0093: 订阅, 0108: 赠送订阅)
+          if ((opcode === '0018' || opcode === '0033' || opcode === '0091' || opcode === '0093' || opcode === '0108') && this.slot.superChatEngine) {
+            const rawParts = payload.split(SEPARATOR);
+            const parts = rawParts[0] === '' ? rawParts.slice(1) : rawParts;
+            const rawSenderId = String(parts[1] || '').replace(/\([^)]*\)/g, '').trim();
+            const sender = parts[2] || rawSenderId || '观众';
+            const avatar = rawSenderId.length >= 2
+              ? `https://profile.img.sooplive.com/LOGO/${rawSenderId.slice(0, 2).toLowerCase()}/${rawSenderId}/${rawSenderId}.jpg`
+              : '';
+
+            if (opcode === '0018') {
+              const count = parseInt(parts[3], 10) || 1;
+              const rawMsg = parts[7] && !/^\d+$/.test(parts[7].trim()) ? parts[7].replace(/\r/gi, '').trim() : '';
+              this.slot.superChatEngine.handleEvent({
+                type: 'donation',
+                platform: 'soop',
+                sender,
+                avatar,
+                amount: count,
+                amountLabel: `별풍선 ${count.toLocaleString()}개`,
+                message: rawMsg
+              });
+            } else if (opcode === '0033') {
+              const count = parseInt(parts[3], 10) || parseInt(parts[4], 10) || 1;
+              this.slot.superChatEngine.handleEvent({
+                type: 'donation',
+                platform: 'soop',
+                sender,
+                avatar,
+                amount: count,
+                amountLabel: `애드벌룬 ${count.toLocaleString()}개`,
+                message: ''
+              });
+            } else if (opcode === '0091' || opcode === '0093') {
+              const months = parseInt(parts[3], 10) || 1;
+              this.slot.superChatEngine.handleEvent({
+                type: 'subscription',
+                platform: 'soop',
+                sender,
+                avatar,
+                amount: months,
+                amountLabel: `구독 ${months}개월`,
+                message: ''
+              });
+            } else if (opcode === '0108') {
+              this.slot.superChatEngine.handleEvent({
+                type: 'gift',
+                platform: 'soop',
+                sender,
+                avatar,
+                amount: 1,
+                amountLabel: '구독권 선물',
+                message: ''
+              });
+            }
+          }
+
           // 转发官方 SVC_GLOBAL_SUBTITLE (0136) 与备用字幕信令
           if ((opcode === '0136' || opcode === '0122' || opcode === '0139') && this.slot.subtitleEngine?.enabled) {
             const cleanParts = payload.split(SEPARATOR).filter(p => p !== '');
@@ -1003,6 +1060,72 @@ export class DanmakuEngine {
 
               if (msgText) {
                 this.addDanmaku(msgText, nick, { emojis, isMember, platform: 'chzzk' });
+              }
+            }
+          }
+
+          // 93102: Chzzk 打赏 (치즈) / 订阅 / 赠送订阅 / 任务打赏
+          if (cmd === 93102 && this.slot.superChatEngine) {
+            const bdy = data.bdy || [];
+            for (const item of bdy) {
+              let prof = null;
+              try {
+                if (item.profile) {
+                  prof = typeof item.profile === 'string' ? JSON.parse(item.profile) : item.profile;
+                }
+              } catch (e) {}
+
+              let extras = {};
+              try {
+                if (item.extras) {
+                  extras = typeof item.extras === 'string' ? JSON.parse(item.extras) : (item.extras || {});
+                }
+              } catch (e) {}
+
+              const msgType = Number(item.msgTypeCode || item.messageTypeCode || 0);
+              const isAnon = item.uid === 'anonymous' || extras.isAnonymous;
+              const sender = isAnon ? '匿名观众' : (prof?.nickname || extras?.nickname || '观众');
+              const avatar = isAnon ? '' : (prof?.profileImageUrl || '');
+              const payAmount = Number(extras?.payAmount) || 0;
+              const message = item.msg || '';
+
+              if (msgType === 11) {
+                const month = Number(extras?.month) || 1;
+                const tierLabel = extras?.tierName ? `${extras.tierName} ` : '';
+                this.slot.superChatEngine.handleEvent({
+                  type: 'subscription',
+                  platform: 'chzzk',
+                  sender,
+                  avatar,
+                  amount: month,
+                  amountLabel: `订阅 ${tierLabel}${month}个月`,
+                  message,
+                  time: item.ctime || Date.now()
+                });
+              } else if (msgType === 12) {
+                const qty = Number(extras?.quantity) || 1;
+                this.slot.superChatEngine.handleEvent({
+                  type: 'gift',
+                  platform: 'chzzk',
+                  sender,
+                  avatar,
+                  amount: qty,
+                  amountLabel: `赠送订阅 x${qty}`,
+                  message,
+                  time: item.ctime || Date.now()
+                });
+              } else if (msgType === 10 || msgType === 30 || payAmount > 0) {
+                const prefix = msgType === 30 ? '任务 ' : '';
+                this.slot.superChatEngine.handleEvent({
+                  type: 'donation',
+                  platform: 'chzzk',
+                  sender,
+                  avatar,
+                  amount: payAmount,
+                  amountLabel: `${prefix}${payAmount.toLocaleString()} 치즈`,
+                  message,
+                  time: item.ctime || Date.now()
+                });
               }
             }
           }

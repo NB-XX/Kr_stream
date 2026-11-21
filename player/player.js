@@ -14,6 +14,7 @@ import { StreamResolver, PLATFORM_CDNS } from '../core/stream-resolver.js';
 import { SOOP_CATEGORY_MAP } from '../core/soop-categories.js';
 import { SubtitleEngine } from './subtitle-engine.js';
 import { DanmakuEngine } from './danmaku-engine.js';
+import { SuperChatEngine } from './superchat-engine.js';
 
 let nextSlotId = 1;
 
@@ -68,6 +69,7 @@ class StreamSlot {
     this.renderDom();
     this.subtitleEngine = new SubtitleEngine(this);
     this.danmakuEngine = new DanmakuEngine(this);
+    this.superChatEngine = new SuperChatEngine(this);
     this.bindEvents();
 
     if (initialData) {
@@ -841,6 +843,7 @@ class StreamSlot {
     this.networkRetryCount = 0;
     if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
     this.replayBar.classList.remove('active');
+    if (this.superChatEngine) this.superChatEngine.reset();
 
     if (streamData.safeCatchupDistance !== undefined) {
       this.safeCatchupDistance = parseFloat(streamData.safeCatchupDistance) || 2.0;
@@ -1615,6 +1618,7 @@ class StreamSlot {
     this.networkRetryCount = 0;
     if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
     this.replayBar.classList.remove('active');
+    if (this.superChatEngine) this.superChatEngine.reset();
 
     const platform = this.currentStreamData?.platform;
     if (this.btnCtrlReplay) {
@@ -2528,6 +2532,10 @@ class StreamSlot {
     if (this.subtitleEngine) {
       this.subtitleEngine.destroy();
       this.subtitleEngine = null;
+    }
+    if (this.superChatEngine) {
+      this.superChatEngine.destroy();
+      this.superChatEngine = null;
     }
     if (this.syncTimer) clearInterval(this.syncTimer);
     if (this.catchupCheckerTimer) clearInterval(this.catchupCheckerTimer);
