@@ -538,6 +538,32 @@ async function runTests() {
 
   console.log('  Pass: Split subscription/SC regions, duration scaling, and WS integration verified.');
 
+  console.log('[Test 21] Short Extension Name, Responsive Subtitle Bottom, and Global Preferences Modal');
+  assert.strictEqual(manifest.name, 'KRStream', 'Extension name must be short for draggable mini window title bar');
+  assert.strictEqual(manifest.action.default_title, 'KRStream', 'Action title must match short name');
+  assert(latestPlayerHtml.includes('<title>KRStream</title>'), 'player.html title must be concise KRStream');
+  assert(latestPlayerJs.includes("pipWindow.document.title = 'KRStream'"), 'Document PiP title must be short KRStream');
+  assert(latestCss.includes('bottom: clamp('), 'player.css subtitle overlay must use responsive bottom offset');
+  assert(latestPlayerJs.includes('bottom: clamp('), 'Document PiP subtitle overlay must use responsive bottom offset');
+
+  assert(latestPlayerHtml.includes('id="btn-open-prefs"') && latestPlayerHtml.includes('id="modal-preferences"'), 'player.html must provide top-right settings button and preferences modal');
+  for (const id of [
+    'pref-auto-sc',
+    'pref-auto-danmaku',
+    'pref-auto-subs',
+    'pref-sub-bilingual',
+    'pref-sub-primary',
+    'pref-sub-secondary',
+    'pref-quality',
+    'pref-cdn-soop',
+    'pref-cdn-chzzk',
+    'pref-cdn-cime'
+  ]) {
+    assert(latestPlayerHtml.includes(`id="${id}"`), `Preferences modal must include ${id}`);
+  }
+  assert(latestPlayerJs.includes('getUserPrefs') && latestPlayerJs.includes('initPreferencesModal'), 'player.js must manage and apply user preferences');
+  console.log('  Pass: Short name, responsive subtitle offset, and preferences modal verified.');
+
   console.log('\nAll integration tests passed successfully.');
 }
 

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KRStream Studio - 多屏直播监控工作台</title>
+  <title>KRStream</title>
   <link rel="stylesheet" href="player.css">
   <script src="../vendor/hls.min.js"></script>
   <script src="../vendor/mux.min.js"></script>
@@ -98,6 +98,13 @@
 
         <div class="top-right">
           <button class="btn-subtle" id="btn-clear-all" title="清空窗口">清空网格</button>
+          <button class="btn-secondary" id="btn-open-prefs" title="偏好设置">
+            <svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.5">
+              <circle cx="8" cy="8" r="2.2"/>
+              <path d="M8 1.5v1.8M8 12.7v1.8M1.5 8h1.8M12.7 8h1.8M3.4 3.4l1.3 1.3M11.3 11.3l1.3 1.3M12.6 3.4l-1.3 1.3M4.7 11.3l-1.3 1.3"/>
+            </svg>
+            <span>设置</span>
+          </button>
         </div>
       </header>
 
@@ -184,6 +191,94 @@
           <div class="modal-btn-group">
             <button class="btn-secondary" id="btn-copy-long-image">复制</button>
             <button class="btn-primary" id="btn-download-long-image">下载 PNG</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 全局偏好设置弹窗 -->
+    <div class="modal-overlay" id="modal-preferences" style="display:none;">
+      <div class="modal-box prefs-modal-box">
+        <div class="modal-header">
+          <div class="modal-title">偏好设置</div>
+          <button class="btn-icon" id="btn-close-prefs">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M4 4l8 8M12 4l-8 8"/>
+            </svg>
+          </button>
+        </div>
+        <div class="modal-body prefs-modal-body">
+          <div class="prefs-section">
+            <div class="prefs-row">
+              <span class="prefs-label">自动开启 SC</span>
+              <label class="bili-switch">
+                <input type="checkbox" id="pref-auto-sc" checked>
+                <span class="bili-switch-slider"></span>
+              </label>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">自动开启弹幕</span>
+              <label class="bili-switch">
+                <input type="checkbox" id="pref-auto-danmaku" checked>
+                <span class="bili-switch-slider"></span>
+              </label>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">自动开启字幕</span>
+              <label class="bili-switch">
+                <input type="checkbox" id="pref-auto-subs" checked>
+                <span class="bili-switch-slider"></span>
+              </label>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">双语字幕</span>
+              <label class="bili-switch">
+                <input type="checkbox" id="pref-sub-bilingual" checked>
+                <span class="bili-switch-slider"></span>
+              </label>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">主字幕语言</span>
+              <select class="prefs-select" id="pref-sub-primary"></select>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">副字幕语言</span>
+              <select class="prefs-select" id="pref-sub-secondary"></select>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">默认画质</span>
+              <select class="prefs-select" id="pref-quality">
+                <option value="highest">最高原画</option>
+                <option value="1080p">1080p</option>
+                <option value="720p">720p</option>
+                <option value="auto">自动</option>
+              </select>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">SOOP 路线</span>
+              <select class="prefs-select" id="pref-cdn-soop">
+                <option value="global">Global 1</option>
+                <option value="global_kr">Global KR</option>
+                <option value="kr_zone">韩国本地</option>
+                <option value="original">默认</option>
+              </select>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">Chzzk 路线</span>
+              <select class="prefs-select" id="pref-cdn-chzzk">
+                <option value="default">默认</option>
+                <option value="akamai">Akamai</option>
+                <option value="pstatic">LiveCloud</option>
+                <option value="naver_edge">Naver Edge</option>
+              </select>
+            </div>
+            <div class="prefs-row">
+              <span class="prefs-label">CI.ME 路线</span>
+              <select class="prefs-select" id="pref-cdn-cime">
+                <option value="default">默认</option>
+                <option value="cloudfront">CloudFront</option>
+              </select>
+            </div>
           </div>
         </div>
       </div>

@@ -1431,13 +1431,29 @@ video {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 42px;
+  bottom: clamp(6px, 2.2%, 14px);
   display: flex;
   justify-content: center;
   align-items: flex-end;
   pointer-events: none;
   z-index: 15;
-  padding: 0 12px;
+  padding: 0 10px;
+  transition: bottom 0.18s ease;
+}
+
+.stream-slot:hover .slot-subtitle-overlay {
+  bottom: 42px;
+}
+
+.stream-slot.slot-mini:hover .slot-subtitle-overlay,
+.stream-slot.slot-nano:hover .slot-subtitle-overlay {
+  bottom: 36px;
+}
+
+.stream-slot.slot-mini .subtitle-box,
+.stream-slot.slot-nano .subtitle-box {
+  padding: 3px 8px;
+  max-width: 94%;
 }
 
 .subtitle-box {
@@ -2469,6 +2485,53 @@ video {
 .modal-btn-group {
   display: flex;
   gap: 6px;
+}
+
+/* 偏好设置弹窗 */
+.prefs-modal-box {
+  width: 360px;
+  max-width: 92vw;
+}
+
+.prefs-modal-body {
+  padding: 12px 16px;
+  overflow-y: auto;
+  max-height: 75vh;
+}
+
+.prefs-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.prefs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 28px;
+  gap: 12px;
+}
+
+.prefs-label {
+  font-size: 12px;
+  color: var(--fg-primary);
+}
+
+.prefs-select {
+  background: var(--bg-surface-2);
+  border: 1px solid var(--border-default);
+  color: var(--fg-primary);
+  border-radius: var(--radius-xs);
+  padding: 4px 8px;
+  font-size: 11px;
+  outline: none;
+  cursor: pointer;
+  min-width: 136px;
+}
+
+.prefs-select:focus {
+  border-color: var(--accent-primary);
 }
 
 /* ===================================================================

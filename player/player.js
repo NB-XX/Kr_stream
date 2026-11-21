@@ -12,9 +12,41 @@
 
 import { StreamResolver, PLATFORM_CDNS } from '../core/stream-resolver.js';
 import { SOOP_CATEGORY_MAP } from '../core/soop-categories.js';
-import { SubtitleEngine } from './subtitle-engine.js';
+import { SubtitleEngine, SUBTITLE_LANGS } from './subtitle-engine.js';
 import { DanmakuEngine } from './danmaku-engine.js';
 import { SuperChatEngine } from './superchat-engine.js';
+
+const DEFAULT_USER_PREFS = {
+  autoSc: true,
+  autoDanmaku: true,
+  autoSubs: true,
+  subBilingual: true,
+  subPrimaryLang: 'zh-CN',
+  subSecondaryLang: 'ko',
+  preferredQuality: 'highest',
+  cdnSoop: 'global',
+  cdnChzzk: 'default',
+  cdnCime: 'default'
+};
+
+function getUserPrefs() {
+  try {
+    const raw = localStorage.getItem('krstream_user_prefs');
+    if (!raw) return { ...DEFAULT_USER_PREFS };
+    return { ...DEFAULT_USER_PREFS, ...JSON.parse(raw) };
+  } catch (e) {
+    return { ...DEFAULT_USER_PREFS };
+  }
+}
+
+function saveUserPrefs(prefs) {
+  const merged = { ...DEFAULT_USER_PREFS, ...prefs };
+  try {
+    localStorage.setItem('krstream_user_prefs', JSON.stringify(merged));
+    localStorage.setItem('krstream_sc_enabled', String(merged.autoSc));
+  } catch (e) {}
+  return merged;
+}
 
 let nextSlotId = 1;
 
@@ -23,7 +55,9 @@ class StreamSlot {
     this.slotId = slotId;
     this.manager = manager;
     this.currentStreamData = initialData ? { ...initialData } : null;
-    this.selectedCdn = initialData?.selectedCdn || (initialData?.platform === 'soop' ? 'global' : 'default');
+    const prefs = getUserPrefs();
+    const fallbackCdn = initialData?.platform === 'soop' ? 'global' : 'default';
+    this.selectedCdn = initialData?.selectedCdn || this.getPreferredCdn(initialData?.platform, prefs) || fallbackCdn;
 
     this.hls = null;
     this.audioCtx = null;
@@ -73,10 +107,41 @@ class StreamSlot {
     this.subtitleEngine = new SubtitleEngine(this);
     this.danmakuEngine = new DanmakuEngine(this);
     this.superChatEngine = new SuperChatEngine(this);
+    this.applyInitialPrefs(prefs);
     this.bindEvents();
 
     if (initialData) {
       this.loadStream(initialData);
+    }
+  }
+
+  getPreferredCdn(platform, prefs = getUserPrefs()) {
+    if (platform === 'soop') return prefs.cdnSoop || 'global';
+    if (platform === 'chzzk') return prefs.cdnChzzk || 'default';
+    if (platform === 'cime') return prefs.cdnCime || 'default';
+    return 'default';
+  }
+
+  applyInitialPrefs(prefs = getUserPrefs()) {
+    if (this.superChatEngine) {
+      this.superChatEngine.enabled = Boolean(prefs.autoSc);
+      this.superChatEngine.updateButtonState();
+    }
+    if (this.danmakuEngine) {
+      this.danmakuEngine.enabled = Boolean(prefs.autoDanmaku);
+      this.danmakuEngine.updateButtonState();
+      if (this.danmakuEngine.containerEl) {
+        this.danmakuEngine.containerEl.style.display = this.danmakuEngine.enabled ? 'block' : 'none';
+      }
+    }
+    if (this.subtitleEngine) {
+      this.subtitleEngine.primaryLang = prefs.subPrimaryLang || 'zh-CN';
+      this.subtitleEngine.secondaryLang = prefs.subSecondaryLang || 'ko';
+      this.subtitleEngine.isBilingual = Boolean(prefs.subBilingual);
+      this.subtitleEngine.mode = this.subtitleEngine.isBilingual ? 'bilingual' : this.subtitleEngine.primaryLang;
+      this.subtitleEngine.enabled = Boolean(prefs.autoSubs);
+      this.subtitleEngine.updateButtonState();
+      this.subtitleEngine.updateMenuUI();
     }
   }
 
@@ -801,13 +866,14 @@ class StreamSlot {
   async loadStream(streamData) {
     this.currentStreamData = { ...streamData };
     let { streamUrl, platform, streamer, title, channelId } = streamData;
+    const prefs = getUserPrefs();
 
     if (streamData.selectedCdn) {
       this.selectedCdn = streamData.selectedCdn;
-    } else if (platform === 'soop' && (!this.selectedCdn || this.selectedCdn === 'default')) {
-      this.selectedCdn = 'global';
+    } else {
+      this.selectedCdn = this.getPreferredCdn(platform, prefs);
     }
-    this.selectedSoopQuality = streamData.selectedQuality || 'original';
+    this.selectedSoopQuality = streamData.selectedQuality || '';
 
     // 统一设置开播时间点，供进度条及 Debug Info 精准显示
     const initOpen = streamData.openTime || streamData.openDate;
@@ -834,7 +900,12 @@ class StreamSlot {
     this.networkRetryCount = 0;
     if (this.networkRetryTimer) clearTimeout(this.networkRetryTimer);
     this.replayBar.classList.remove('active');
-    if (this.superChatEngine) this.superChatEngine.reset();
+    if (this.superChatEngine) {
+      this.superChatEngine.reset();
+      const scOn = streamData.scEnabled !== undefined ? Boolean(streamData.scEnabled) : Boolean(prefs.autoSc);
+      this.superChatEngine.enabled = scOn;
+      this.superChatEngine.updateButtonState();
+    }
 
     if (streamData.safeCatchupDistance !== undefined) {
       this.safeCatchupDistance = parseFloat(streamData.safeCatchupDistance) || 2.0;
@@ -924,17 +995,15 @@ class StreamSlot {
         .catch(() => {});
     }
 
-    // 恢复字幕设置与引擎 (SOOP具备字幕或CI.ME默认自动获取)
-    if (streamData.subtitlePrimaryLang) {
-      this.subtitleEngine.setPrimaryLang(streamData.subtitlePrimaryLang);
-    }
-    if (streamData.subtitleSecondaryLang) {
-      this.subtitleEngine.setSecondaryLang(streamData.subtitleSecondaryLang);
-    }
+    // 恢复字幕设置与引擎
+    this.subtitleEngine.setPrimaryLang(streamData.subtitlePrimaryLang || prefs.subPrimaryLang || 'zh-CN');
+    this.subtitleEngine.setSecondaryLang(streamData.subtitleSecondaryLang || prefs.subSecondaryLang || 'ko');
     if (streamData.subtitleIsBilingual !== undefined) {
       this.subtitleEngine.setBilingual(Boolean(streamData.subtitleIsBilingual));
     } else if (streamData.subtitleMode) {
       this.subtitleEngine.setMode(streamData.subtitleMode);
+    } else {
+      this.subtitleEngine.setBilingual(Boolean(prefs.subBilingual));
     }
     if (streamData.subtitleFontSize) {
       this.subtitleEngine.setFontSize(streamData.subtitleFontSize);
@@ -949,8 +1018,8 @@ class StreamSlot {
       this.subtitleEngine.setTextAlign(streamData.subtitleAlign);
     }
     const shouldEnableSubs = streamData.subtitlesEnabled !== undefined
-      ? !!streamData.subtitlesEnabled
-      : (platform === 'cime' || !!streamData.isSubtitle);
+      ? Boolean(streamData.subtitlesEnabled)
+      : Boolean(prefs.autoSubs);
 
     if (shouldEnableSubs) {
       this.subtitleEngine.enabled = true;
@@ -963,11 +1032,15 @@ class StreamSlot {
     }
 
     // 启动实时弹幕 (Bilibili/Niconico 弹幕引擎)
-    if (streamData.danmakuEnabled !== undefined && this.danmakuEngine) {
-      this.danmakuEngine.enabled = Boolean(streamData.danmakuEnabled);
-      this.danmakuEngine.updateButtonState();
-    }
     if (this.danmakuEngine) {
+      const dmOn = streamData.danmakuEnabled !== undefined
+        ? Boolean(streamData.danmakuEnabled)
+        : Boolean(prefs.autoDanmaku);
+      this.danmakuEngine.enabled = dmOn;
+      this.danmakuEngine.updateButtonState();
+      if (this.danmakuEngine.containerEl) {
+        this.danmakuEngine.containerEl.style.display = dmOn ? 'block' : 'none';
+      }
       this.danmakuEngine.start(this.currentStreamData);
     }
 
@@ -1738,7 +1811,20 @@ class StreamSlot {
         `;
       }
 
-      const defaultQ = this.currentStreamData.selectedQuality || (is1440 ? 'hd8k' : 'original');
+      let defaultQ = this.currentStreamData.selectedQuality;
+      if (!defaultQ) {
+        const prefQ = getUserPrefs().preferredQuality || 'highest';
+        if (prefQ === '720p') {
+          defaultQ = presets?.find((p) => String(p.label_resolution) === '720')?.name || (is1440 ? 'hd4k' : 'hd');
+        } else if (prefQ === '1080p') {
+          defaultQ = presets?.find((p) => String(p.label_resolution) === '1080')?.name || (is1440 ? 'hd8k' : 'original');
+        } else {
+          defaultQ = is1440 ? 'hd8k' : 'original';
+          if (prefQ === 'highest' && is1440) {
+            defaultQ = 'original';
+          }
+        }
+      }
       this.selectedSoopQuality = this.selectedSoopQuality || defaultQ;
       this.selectQuality.value = this.selectedSoopQuality;
       return;
@@ -1768,8 +1854,32 @@ class StreamSlot {
       this.selectQuality.appendChild(opt);
     });
 
-    // 默认开启最高画质播放；若网络较差分片加载超时，将自动平滑降级至 Auto
-    if (this.isForcedHighestQuality && highestIdx >= 0 && this.hls) {
+    // 根据默认画质偏好选择目标清晰度
+    const prefQ = getUserPrefs().preferredQuality || 'highest';
+    if (prefQ === 'auto' && this.hls) {
+      this.isForcedHighestQuality = false;
+      this.hls.startLevel = -1;
+      this.hls.currentLevel = -1;
+      this.selectQuality.value = '-1';
+    } else if ((prefQ === '1080p' || prefQ === '720p') && this.hls) {
+      const targetH = prefQ === '1080p' ? 1080 : 720;
+      let targetIdx = -1;
+      let bestScore = -1;
+      levels.forEach((lvl, idx) => {
+        if ((lvl.height || 0) <= targetH) {
+          const s = (lvl.height || 0) * 10000000 + (lvl.bitrate || 0);
+          if (s > bestScore) {
+            bestScore = s;
+            targetIdx = idx;
+          }
+        }
+      });
+      if (targetIdx < 0) targetIdx = highestIdx;
+      this.isForcedHighestQuality = (targetIdx === highestIdx);
+      this.hls.startLevel = targetIdx;
+      this.hls.currentLevel = targetIdx;
+      this.selectQuality.value = String(targetIdx);
+    } else if (this.isForcedHighestQuality && highestIdx >= 0 && this.hls) {
       this.hls.startLevel = highestIdx;
       this.hls.currentLevel = highestIdx;
       this.selectQuality.value = String(highestIdx);
@@ -2127,6 +2237,7 @@ class StreamSlot {
         width: 854,
         height: 480,
       });
+      pipWindow.document.title = 'KRStream';
       this.pipWindow = pipWindow;
 
       // 4. 将主窗口的所有外部样式和行内样式拷贝至悬浮窗口，确保弹幕动画与字幕样式无损
@@ -2194,11 +2305,27 @@ class StreamSlot {
           position: absolute;
           left: 0;
           right: 0;
-          bottom: 44px;
+          bottom: clamp(6px, 2.2%, 14px);
           pointer-events: none;
           z-index: 20;
           display: flex;
           justify-content: center;
+          transition: bottom 0.18s ease;
+        }
+        .pip-window-shell:hover .slot-subtitle-overlay {
+          bottom: 42px;
+        }
+        @media (max-height: 360px) {
+          .pip-window-shell .subtitle-box {
+            padding: 3px 8px;
+            max-width: 94%;
+          }
+          .pip-window-shell .pip-mini-controls {
+            height: 34px;
+          }
+          .pip-window-shell:hover .slot-subtitle-overlay {
+            bottom: 36px;
+          }
         }
         .pip-window-shell .slot-danmaku-overlay {
           position: absolute;
@@ -2455,6 +2582,7 @@ class StreamSlot {
     params.set('title', d.title || '');
     params.set('channelId', d.channelId || '');
     params.set('streamUrl', d.streamUrl || '');
+    params.set('sc', this.superChatEngine?.enabled ? '1' : '0');
     params.set('danmaku', this.danmakuEngine?.enabled ? '1' : '0');
     params.set('subs', this.subtitleEngine?.enabled ? '1' : '0');
     params.set('subP', this.subtitleEngine?.primaryLang || 'zh-CN');
@@ -2714,14 +2842,10 @@ class SlotManager {
 
   createSlot(initialData = null) {
     const id = nextSlotId++;
-    const defaultCdn = 'default';
     const data = initialData ? { ...initialData } : null;
-    if (data && !data.selectedCdn) {
-      data.selectedCdn = defaultCdn;
-    }
     const slot = new StreamSlot(id, this, data);
-    if (slot && (!slot.selectedCdn || slot.selectedCdn === 'default')) {
-      slot.selectedCdn = defaultCdn;
+    if (slot && !slot.selectedCdn) {
+      slot.selectedCdn = slot.getPreferredCdn(data?.platform);
     }
     this.slots.set(id, slot);
     this.slotOrder.push(id);
@@ -2818,6 +2942,7 @@ class SlotManager {
           ...slot.currentStreamData,
           selectedCdn: slot.selectedCdn || 'default',
           safeCatchupDistance: slot.safeCatchupDistance || 2.0,
+          scEnabled: slot.superChatEngine?.enabled !== false,
           danmakuEnabled: slot.danmakuEngine?.enabled !== false,
           subtitlesEnabled: slot.subtitleEngine?.enabled || false,
           subtitlePrimaryLang: slot.subtitleEngine?.primaryLang || 'zh-CN',
@@ -3523,6 +3648,7 @@ class AppHub {
     }
 
     this.bindEvents();
+    this.initPreferencesModal();
     if (localStorage.getItem('krstream_sidebar_collapsed') === 'true') {
       this.sidebar.classList.add('collapsed');
     }
@@ -3534,6 +3660,130 @@ class AppHub {
       this.startAutoRefresh();
     }
     this.parseUrlParams();
+  }
+
+  initPreferencesModal() {
+    const btnOpen = document.getElementById('btn-open-prefs');
+    const modal = document.getElementById('modal-preferences');
+    const btnClose = document.getElementById('btn-close-prefs');
+    if (!btnOpen || !modal) return;
+
+    const controls = {
+      autoSc: document.getElementById('pref-auto-sc'),
+      autoDanmaku: document.getElementById('pref-auto-danmaku'),
+      autoSubs: document.getElementById('pref-auto-subs'),
+      subBilingual: document.getElementById('pref-sub-bilingual'),
+      subPrimaryLang: document.getElementById('pref-sub-primary'),
+      subSecondaryLang: document.getElementById('pref-sub-secondary'),
+      preferredQuality: document.getElementById('pref-quality'),
+      cdnSoop: document.getElementById('pref-cdn-soop'),
+      cdnChzzk: document.getElementById('pref-cdn-chzzk'),
+      cdnCime: document.getElementById('pref-cdn-cime')
+    };
+
+    const langHtml = SUBTITLE_LANGS.map((l) => `<option value="${l.id}">${l.label}</option>`).join('');
+    if (controls.subPrimaryLang) controls.subPrimaryLang.innerHTML = langHtml;
+    if (controls.subSecondaryLang) controls.subSecondaryLang.innerHTML = langHtml;
+
+    const syncForm = (prefs = getUserPrefs()) => {
+      if (controls.autoSc) controls.autoSc.checked = Boolean(prefs.autoSc);
+      if (controls.autoDanmaku) controls.autoDanmaku.checked = Boolean(prefs.autoDanmaku);
+      if (controls.autoSubs) controls.autoSubs.checked = Boolean(prefs.autoSubs);
+      if (controls.subBilingual) controls.subBilingual.checked = Boolean(prefs.subBilingual);
+      if (controls.subPrimaryLang) controls.subPrimaryLang.value = prefs.subPrimaryLang || 'zh-CN';
+      if (controls.subSecondaryLang) {
+        controls.subSecondaryLang.value = prefs.subSecondaryLang || 'ko';
+        controls.subSecondaryLang.disabled = !prefs.subBilingual;
+      }
+      if (controls.preferredQuality) controls.preferredQuality.value = prefs.preferredQuality || 'highest';
+      if (controls.cdnSoop) controls.cdnSoop.value = prefs.cdnSoop || 'global';
+      if (controls.cdnChzzk) controls.cdnChzzk.value = prefs.cdnChzzk || 'default';
+      if (controls.cdnCime) controls.cdnCime.value = prefs.cdnCime || 'default';
+    };
+
+    btnOpen.addEventListener('click', () => {
+      syncForm(getUserPrefs());
+      modal.style.display = 'flex';
+    });
+
+    const closeModal = () => {
+      modal.style.display = 'none';
+    };
+    btnClose?.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape' && modal.style.display !== 'none') {
+        closeModal();
+      }
+    });
+
+    const bindings = [
+      ['autoSc', 'checked'],
+      ['autoDanmaku', 'checked'],
+      ['autoSubs', 'checked'],
+      ['subBilingual', 'checked'],
+      ['subPrimaryLang', 'value'],
+      ['subSecondaryLang', 'value'],
+      ['preferredQuality', 'value'],
+      ['cdnSoop', 'value'],
+      ['cdnChzzk', 'value'],
+      ['cdnCime', 'value']
+    ];
+
+    for (const [key, prop] of bindings) {
+      const el = controls[key];
+      if (!el) continue;
+      el.addEventListener('change', () => {
+        const current = getUserPrefs();
+        current[key] = el[prop];
+        const saved = saveUserPrefs(current);
+        if (key === 'subBilingual' && controls.subSecondaryLang) {
+          controls.subSecondaryLang.disabled = !saved.subBilingual;
+        }
+        this.applyPreferenceToSlots(key, saved);
+      });
+    }
+  }
+
+  applyPreferenceToSlots(changedKey, prefs) {
+    for (const slot of this.slotManager.slots.values()) {
+      if (changedKey === 'autoSc' && slot.superChatEngine) {
+        slot.superChatEngine.enabled = Boolean(prefs.autoSc);
+        slot.superChatEngine.updateButtonState();
+        if (!prefs.autoSc) slot.superChatEngine.clearFloatingCards();
+      } else if (changedKey === 'autoDanmaku' && slot.danmakuEngine) {
+        if (slot.danmakuEngine.enabled !== Boolean(prefs.autoDanmaku)) {
+          slot.danmakuEngine.toggle();
+          if (prefs.autoDanmaku && slot.currentStreamData?.isLive) {
+            slot.danmakuEngine.start(slot.currentStreamData);
+          }
+        }
+      } else if (changedKey === 'autoSubs' && slot.subtitleEngine) {
+        if (slot.subtitleEngine.enabled !== Boolean(prefs.autoSubs)) {
+          if (slot.currentStreamData?.isLive) {
+            slot.subtitleEngine.toggle();
+          } else {
+            slot.subtitleEngine.enabled = Boolean(prefs.autoSubs);
+            slot.subtitleEngine.updateButtonState();
+          }
+        }
+      } else if (changedKey === 'subBilingual' && slot.subtitleEngine) {
+        slot.subtitleEngine.setBilingual(Boolean(prefs.subBilingual));
+      } else if (changedKey === 'subPrimaryLang' && slot.subtitleEngine) {
+        slot.subtitleEngine.setPrimaryLang(prefs.subPrimaryLang);
+      } else if (changedKey === 'subSecondaryLang' && slot.subtitleEngine) {
+        slot.subtitleEngine.setSecondaryLang(prefs.subSecondaryLang);
+      } else if (
+        (changedKey === 'cdnSoop' && slot.currentStreamData?.platform === 'soop') ||
+        (changedKey === 'cdnChzzk' && slot.currentStreamData?.platform === 'chzzk') ||
+        (changedKey === 'cdnCime' && slot.currentStreamData?.platform === 'cime')
+      ) {
+        slot.changeCdn(prefs[changedKey]);
+      }
+    }
+    this.slotManager.saveState();
   }
 
   bindEvents() {
@@ -3876,11 +4126,12 @@ class AppHub {
     if (streamUrl) {
       const streamer = params.get('streamer') || 'Live';
       if (isStandalone) {
-        document.title = `${streamer} - KRStream 悬浮小窗播放器`;
+        document.title = streamer ? `${streamer} · KRStream` : 'KRStream';
       }
       const slot = this.slotManager.findAvailableSlot() || this.slotManager.createSlot();
       const cdn = params.get('cdn') || 'default';
       slot.selectedCdn = cdn;
+      const scEnabled = params.has('sc') ? params.get('sc') !== '0' : undefined;
       const danmakuEnabled = params.get('danmaku') !== '0';
       const subsEnabled = params.get('subs') === '1';
       const subMode = params.get('subMode') || 'bilingual';
@@ -3902,6 +4153,7 @@ class AppHub {
         openTime: openTime,
         openDate: openDate,
         category: category,
+        scEnabled: scEnabled,
         danmakuEnabled: danmakuEnabled,
         subtitlesEnabled: subsEnabled,
         subtitlePrimaryLang: subP,
