@@ -562,7 +562,17 @@ async function runTests() {
     assert(latestPlayerHtml.includes(`id="${id}"`), `Preferences modal must include ${id}`);
   }
   assert(latestPlayerJs.includes('getUserPrefs') && latestPlayerJs.includes('initPreferencesModal'), 'player.js must manage and apply user preferences');
-  console.log('  Pass: Short name, responsive subtitle offset, and preferences modal verified.');
+
+  // Verify SOOP packet parser does not double-slice into flag1|flag2 when payload starts with '-' within first 36 chars
+  assert(!danmakuEngineCode.includes("payload.slice(0, 36).includes('-')"), 'danmaku-engine.js must NOT slice another 36 chars when payload contains hyphen');
+  const sampleSoopPkt = '\u001d\t000500009300f4ec3c4b-a87d-4e41-a7ed-8912702f817a\fㅇ-ㅇ\fstupid69\f0\f0\f3\f날이따듯\f268501024|425984\f-1\fAD19E1\fB477CA\f-1\f-1\f\f-1\ffw=0&afw=0\f';
+  const parsedPkt = DanmakuEngine.parseSoopPacket(sampleSoopPkt, S);
+  const rawParts = parsedPkt.payload.split(S);
+  const parts = rawParts[0] === '' ? rawParts.slice(1) : rawParts;
+  assert.strictEqual(parsedPkt.opcode, '0005');
+  assert.strictEqual(parts[0], 'ㅇ-ㅇ', 'Comment containing hyphen must not be sliced into flag1|flag2');
+  assert.strictEqual(parts[6], '268501024|425984', 'Bitflag field must stay at index 6');
+  console.log('  Pass: Short name, responsive subtitle offset, preferences modal, and SOOP packet slicing fix verified.');
 
   console.log('\nAll integration tests passed successfully.');
 }

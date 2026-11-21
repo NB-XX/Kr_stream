@@ -548,21 +548,16 @@ export class DanmakuEngine {
 
         const isHeader = text.startsWith('\u001b\t') || text.startsWith('\u001d\t');
         if (isHeader) {
-          const opcode = text.slice(2, 6);
-          if (text.length >= 50) {
-            const uuid = text.slice(14, 50).trim();
-            if (uuid && uuid !== '00000000-0000-0000-0000-000000000000') {
-              this.assignedUuid = uuid;
-            }
-          }
-          let payload = text.length >= 50 ? text.slice(50) : text.slice(14);
-          if (payload.length >= 36 && payload.slice(0, 36).includes('-')) {
-            payload = payload.slice(36);
+          const { opcode, hasUuidHeader, headerUuid, payload } = DanmakuEngine.parseSoopPacket(text, SEPARATOR);
+          if (hasUuidHeader && headerUuid && headerUuid !== '00000000-0000-0000-0000-000000000000') {
+            this.assignedUuid = headerUuid;
           }
 
           if (opcode === '0001') {
             // 保存服务端下发的会话 UUID (偏移 14-50)
-            this.assignedUuid = text.slice(14, 50);
+            if (hasUuidHeader) {
+              this.assignedUuid = text.slice(14, 50);
+            }
             // 2. 发送进房指令 (0002)
             const joinPayload = `${SEPARATOR}${chatNo}${SEPARATOR}${SEPARATOR}0${SEPARATOR}${SEPARATOR}${SEPARATOR}`;
             ws.send(makePacket('0002', joinPayload));
@@ -822,15 +817,15 @@ export class DanmakuEngine {
         if (typeof text !== 'string') return;
 
         if (text.startsWith('\u001b\t') || text.startsWith('\u001d\t')) {
-          const opcode = text.slice(2, 6);
-          if (text.length >= 50) {
-            const uuid = text.slice(14, 50).trim();
-            if (uuid && uuid !== '00000000-0000-0000-0000-000000000000') secUuid = uuid;
+          const { opcode, hasUuidHeader, headerUuid, payload } = DanmakuEngine.parseSoopPacket(text, SEPARATOR);
+          if (hasUuidHeader && headerUuid && headerUuid !== '00000000-0000-0000-0000-000000000000') {
+            secUuid = headerUuid;
           }
-          const payload = text.length >= 50 ? text.slice(50) : text.slice(14);
 
           if (opcode === '0001') {
-            secUuid = text.slice(14, 50);
+            if (hasUuidHeader) {
+              secUuid = text.slice(14, 50);
+            }
             const joinPayload = `${SEPARATOR}${chatNo}${SEPARATOR}${SEPARATOR}0${SEPARATOR}${SEPARATOR}${SEPARATOR}`;
             ws.send(makePacket('0002', joinPayload));
           } else if (opcode === '0002') {
@@ -863,6 +858,14 @@ export class DanmakuEngine {
     } catch (e) {
       console.warn('[KRStream] SOOP 双语次级信道建立失败:', e);
     }
+  }
+
+  static parseSoopPacket(text, SEPARATOR = '\x0c') {
+    const opcode = text.slice(2, 6);
+    const hasUuidHeader = text.length >= 50 && !text.slice(14, 50).includes(SEPARATOR);
+    const headerUuid = hasUuidHeader ? text.slice(14, 50).trim() : '';
+    const payload = hasUuidHeader ? text.slice(50) : text.slice(14);
+    return { opcode, hasUuidHeader, headerUuid, payload };
   }
 
   makeSoopPacket(opcode, payload, uuid = this.assignedUuid || '00000000-0000-0000-0000-000000000000') {
