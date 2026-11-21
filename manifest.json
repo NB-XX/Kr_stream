@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "KRStream",
   "short_name": "KRStream",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "面向 SOOP、Chzzk、CI.ME 平台的独立多屏流媒体播放器，支持多路同屏、原生实时双语字幕、弹幕表情渲染、独立 CDN 调度与时光机回看。",
   "permissions": [
     "storage",
