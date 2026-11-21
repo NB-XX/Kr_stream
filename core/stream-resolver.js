@@ -10,21 +10,20 @@ let dynamicSoopCategories = null;
 
 export const PLATFORM_CDNS = {
   soop: [
-    { key: 'global', name: 'Global 1 (大陆推荐)', host: 'live-global-cdn-v02.sooplive.com' },
-    { key: 'global_kr', name: 'Global KR (亚太节点)', host: 'live-global-cdn-v02.sooplive.co.kr' },
-    { key: 'kr_zone', name: '首尔本地 (KR Zone)', host: 'live-pcweb-kr-cdn-z02.sooplive.com' },
-    { key: 'original', name: '原始分配节点', host: null }
+    { key: 'global', name: 'Global 1', host: 'live-global-cdn-v02.sooplive.com' },
+    { key: 'global_kr', name: 'Global KR', host: 'live-global-cdn-v02.sooplive.co.kr' },
+    { key: 'kr_zone', name: '韩国本地', host: 'live-pcweb-kr-cdn-z02.sooplive.com' },
+    { key: 'original', name: '默认', host: null }
   ],
   chzzk: [
-    { key: 'default', name: '官方默认 (GCDN)', host: null },
-    { key: 'akamai', name: 'Akamai 国际加速', host: 'livecloud.akamaized.net' },
-    { key: 'pstatic', name: 'Naver 专属 (LiveCloud)', host: 'livecloud.pstatic.net' },
-    { key: 'naver_edge', name: 'Naver Edge (gcdn)', host: 'gcdn.navercdn.com' }
+    { key: 'default', name: '默认', host: null },
+    { key: 'akamai', name: 'Akamai', host: 'livecloud.akamaized.net' },
+    { key: 'pstatic', name: 'LiveCloud', host: 'livecloud.pstatic.net' },
+    { key: 'naver_edge', name: 'Naver Edge', host: 'gcdn.navercdn.com' }
   ],
   cime: [
-    { key: 'default', name: '官方默认 (Amazon IVS)', host: null },
-    { key: 'cloudfront', name: 'CloudFront 边缘加速', host: 'cloudfront' },
-    { key: 'original', name: '原始分配源', host: null }
+    { key: 'default', name: '默认', host: null },
+    { key: 'cloudfront', name: 'CloudFront', host: 'cloudfront' }
   ]
 };
 

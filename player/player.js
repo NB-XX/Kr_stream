@@ -48,6 +48,9 @@ class StreamSlot {
       ? parseFloat(initialData.safeCatchupDistance) 
       : (!isNaN(savedSafeLatency) && savedSafeLatency > 0 ? savedSafeLatency : 2.0);
     this.catchupMenu = null;
+    this._onDocClickCatchup = null;
+    this._onDocKeydownDebug = null;
+    this.toastTimer = null;
     this.hasInitialLiveSynced = false;
     this.networkRetryCount = 0;
     this.maxNetworkRetries = 4;
@@ -97,7 +100,7 @@ class StreamSlot {
             </svg>
           </div>
           <span class="slot-index-pill">#${this.slotId}</span>
-          <span class="slot-streamer-label" id="label-streamer-${this.slotId}">等待载入</span>
+          <span class="slot-streamer-label" id="label-streamer-${this.slotId}"></span>
           <div class="slot-sync-clock" id="clock-${this.slotId}">
             <span id="txt-duration-${this.slotId}">--:--:--</span>
             <span class="latency-tag good" id="tag-latency-${this.slotId}">延迟 --s</span>
@@ -130,7 +133,6 @@ class StreamSlot {
         <!-- 初始空闲引导卡 (漫画式三步使用指引，无转圈，体验舒适) -->
         <div class="slot-guide-comic ${this.currentStreamData ? 'hidden' : ''}" id="guide-comic-${this.slotId}">
           <div class="comic-header">
-            <span class="comic-tag">KRSTREAM QUICK START</span>
             <span class="comic-title">多屏工作台快速指南</span>
           </div>
           <div class="comic-panels">
@@ -236,7 +238,6 @@ class StreamSlot {
           <button class="ctrl-icon-btn btn-ctrl-sub-history" id="btn-sub-history-${this.slotId}" title="历史字幕">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10l6 6v10a2 2 0 01-2 2z"/><path d="M14 2v4a2 2 0 002 2h4M10 12h4M10 16h4"/></svg>
             <span class="btn-sub-history-tag">历史字幕</span>
-            <span class="ctrl-sub-badge" id="ctrl-sub-badge-${this.slotId}" style="display:none;">0</span>
           </button>
           <!-- 录制 MP4 -->
           <button class="ctrl-icon-btn" id="btn-record-${this.slotId}" title="录制 MP4">
@@ -278,7 +279,6 @@ class StreamSlot {
     this.btnCtrlReplay = slotEl.querySelector(`#btn-ctrl-replay-${this.slotId}`);
     this.ctrlReplayTag = slotEl.querySelector(`#ctrl-replay-tag-${this.slotId}`);
     this.btnSubHistory = slotEl.querySelector(`#btn-sub-history-${this.slotId}`);
-    this.ctrlSubBadge = slotEl.querySelector(`#ctrl-sub-badge-${this.slotId}`);
     this.btnRecord = slotEl.querySelector(`#btn-record-${this.slotId}`);
     this.recordTxt = slotEl.querySelector(`#record-txt-${this.slotId}`);
     this.videoContainer = slotEl.querySelector('.video-container');
@@ -397,11 +397,12 @@ class StreamSlot {
     }
 
     // 全局点击自动关闭追帧设置菜单
-    document.addEventListener('click', (e) => {
+    this._onDocClickCatchup = (e) => {
       if (this.catchupMenu && !this.catchupMenu.contains(e.target) && e.target !== this.btnCtrlCatchup) {
         this.hideCatchupSettingsMenu();
       }
-    });
+    };
+    document.addEventListener('click', this._onDocClickCatchup);
 
     // 实时回看 (时光机) (底部工具栏)
     if (this.btnCtrlReplay) {
@@ -416,17 +417,6 @@ class StreamSlot {
         window.__KRSTREAM_APP__?.rightDrawer?.toggleForSlot(this.slotId);
       });
     }
-
-    // 监听本窗口字幕新增事件，更新底部工具栏角标数字
-    window.addEventListener('krstream:subtitle-added', (e) => {
-      if (e.detail?.slotId === this.slotId) {
-        if (this.ctrlSubBadge) {
-          const count = this.subtitleEngine?.history?.length || 0;
-          this.ctrlSubBadge.textContent = String(count);
-          this.ctrlSubBadge.style.display = count > 0 ? 'inline-block' : 'none';
-        }
-      }
-    });
 
     // 返回实时直播
     this.dom.querySelector(`#btn-return-live-${this.slotId}`).addEventListener('click', () => {
@@ -589,11 +579,12 @@ class StreamSlot {
     }
 
     // 按 Esc 键快速关闭调试面板
-    document.addEventListener('keydown', (e) => {
+    this._onDocKeydownDebug = (e) => {
       if (e.key === 'Escape' && this.isDebugOpen) {
         this.hideDebugInfo();
       }
-    });
+    };
+    document.addEventListener('keydown', this._onDocKeydownDebug);
 
     // 独立加速 CDN 切换
     if (this.selectCdn) {
@@ -1461,17 +1452,13 @@ class StreamSlot {
 
   updateCatchupSettingsMenu() {
     if (!this.catchupMenu) return;
-    const segDur = this.getSegmentDuration();
-    const effective = this.getEffectiveSafeLatency();
     const options = [1.0, 1.5, 2.0, 3.0, 5.0];
 
     const optsHtml = options.map((sec) => {
       const isSelected = Math.abs(this.safeCatchupDistance - sec) < 0.05;
-      const isClamped = sec < segDur;
-      const note = isClamped ? `<span style="font-size:9px;opacity:0.75;margin-left:2px;">(保底${segDur.toFixed(1)}s)</span>` : '';
       return `
         <button class="sub-opt-btn ${isSelected ? 'active' : ''}" data-sec="${sec}">
-          ${sec.toFixed(1)}s${note}
+          ${sec.toFixed(1)}s
         </button>
       `;
     }).join('');
@@ -1479,7 +1466,6 @@ class StreamSlot {
     this.catchupMenu.innerHTML = `
       <div class="sub-menu-header">
         <span class="sub-menu-title">追帧延迟</span>
-        <span class="sub-menu-status">分片 ${segDur.toFixed(1)}s</span>
       </div>
       <div class="sub-menu-group">
         <label class="sub-group-label">目标延迟</label>
@@ -1504,7 +1490,7 @@ class StreamSlot {
       localStorage.setItem('krstream_safe_catchup_latency', String(sec));
     } catch (e) {}
     const eff = this.getEffectiveSafeLatency();
-    this.showToast(`已设置安全延迟: ${sec.toFixed(1)}s (生效下限: ${eff.toFixed(1)}s)`);
+    this.showToast(`追帧延迟: ${eff.toFixed(1)}s`);
     this.updateCatchupSettingsMenu();
     this.manager?.saveState?.();
   }
@@ -1758,7 +1744,7 @@ class StreamSlot {
       return;
     }
 
-    this.selectQuality.innerHTML = '<option value="-1">自动 (Auto ABR)</option>';
+    this.selectQuality.innerHTML = '<option value="-1">自动</option>';
     if (!levels || levels.length === 0) return;
 
     // 计算并寻找最优/最高画质分级 (优先 height 最大，同高度下比对 bitrate)
@@ -2342,6 +2328,9 @@ class StreamSlot {
 
       shell.appendChild(miniBar);
       pipWindow.document.body.appendChild(shell);
+      if (!this.isUserPaused && this.video) {
+        this.video.play().catch(() => {});
+      }
 
       // 绑定 miniBar 按钮事件
       const btnPlay = miniBar.querySelector('#pip-btn-play');
@@ -2430,6 +2419,9 @@ class StreamSlot {
           placeholder.remove();
         } else {
           this.dom.querySelector('.slot-controls')?.before(this.videoContainer);
+        }
+        if (!this.isUserPaused && this.video) {
+          this.video.play().catch(() => {});
         }
 
         this.pipWindow = null;
@@ -2537,9 +2529,24 @@ class StreamSlot {
       this.superChatEngine.destroy();
       this.superChatEngine = null;
     }
+    if (this._onDocClickCatchup) {
+      document.removeEventListener('click', this._onDocClickCatchup);
+      this._onDocClickCatchup = null;
+    }
+    if (this._onDocKeydownDebug) {
+      document.removeEventListener('keydown', this._onDocKeydownDebug);
+      this._onDocKeydownDebug = null;
+    }
+    if (this.toastTimer) {
+      clearTimeout(this.toastTimer);
+      this.toastTimer = null;
+    }
     if (this.syncTimer) clearInterval(this.syncTimer);
     if (this.catchupCheckerTimer) clearInterval(this.catchupCheckerTimer);
-    if (this.networkRetryTimer) clearInterval(this.networkRetryTimer);
+    if (this.networkRetryTimer) {
+      clearTimeout(this.networkRetryTimer);
+      this.networkRetryTimer = null;
+    }
     if (this.recordingTimer) clearInterval(this.recordingTimer);
     if (this.debugTimer) clearInterval(this.debugTimer);
     if (this.debugCard && this.debugCard.parentNode) {
@@ -2866,7 +2873,6 @@ class RightDrawerManager {
     this.searchInput = document.getElementById('sub-search-input');
     this.selectAllBtn = document.getElementById('btn-sub-select-all');
     this.clearSelectBtn = document.getElementById('btn-sub-clear-select');
-    this.selectedCountLabel = document.getElementById('selected-sub-count');
     this.genLongImageBtn = document.getElementById('btn-gen-long-image');
     this.subList = document.getElementById('drawer-sub-list');
     this.countBadge = document.getElementById('sub-history-count-badge');
@@ -3025,14 +3031,6 @@ class RightDrawerManager {
   }
 
   updateBadgeCount() {
-    for (const slot of this.app.slotManager.slots.values()) {
-      const count = slot.subtitleEngine?.history?.length || 0;
-      const badge = slot.dom?.querySelector(`#ctrl-sub-badge-${slot.slotId}`);
-      if (badge) {
-        badge.textContent = String(count);
-        badge.style.display = count > 0 ? 'inline-block' : 'none';
-      }
-    }
     if (this.countBadge) {
       let total = 0;
       for (const slot of this.app.slotManager.slots.values()) {
@@ -3043,7 +3041,6 @@ class RightDrawerManager {
   }
 
   updateSelectionUI() {
-    this.selectedCountLabel.textContent = `已选: ${this.selectedIds.size}`;
     const checkboxes = this.subList.querySelectorAll('.sub-card-checkbox');
     checkboxes.forEach((cb) => {
       const card = cb.closest('.sub-card');
@@ -3116,7 +3113,6 @@ class RightDrawerManager {
           this.selectedIds.delete(item.id);
           card.classList.remove('selected');
         }
-        this.selectedCountLabel.textContent = `已选: ${this.selectedIds.size}`;
       });
 
       // 点击卡片其余部分：触发跳转到对应时间播放
@@ -3456,7 +3452,6 @@ class AppHub {
         ${cdns.map((c) => `
           <button class="menu-item-btn" data-action="copy-cdn" data-cdn="${c.key}">
             <span>${c.name}</span>
-            <span class="item-tag">${c.host ? '专属' : '默认'}</span>
           </button>
         `).join('')}
       `;
@@ -3607,40 +3602,40 @@ class AppHub {
 
         if (soop.isLoggedIn) {
           badgeSoop.className = 'acc-badge online';
-          const soopText = soop.username ? `SOOP: 已连接 (${soop.username})` : 'SOOP: 已连接';
+          const soopText = soop.username ? `SOOP · ${soop.username}` : 'SOOP';
           badgeSoop.title = soopText;
           badgeSoop.querySelector('.name').textContent = soopText;
           badgeSoop.onclick = null;
         } else {
           badgeSoop.className = 'acc-badge';
-          badgeSoop.title = '点击登录 SOOP';
-          badgeSoop.querySelector('.name').textContent = 'SOOP: 未登录';
+          badgeSoop.title = '登录 SOOP';
+          badgeSoop.querySelector('.name').textContent = '登录 SOOP';
           badgeSoop.onclick = () => window.open('https://www.sooplive.com', '_blank');
         }
 
         if (chzzk.isLoggedIn) {
           badgeChzzk.className = 'acc-badge online';
-          const chzzkText = chzzk.username ? `CHZZK: 已连接 (${chzzk.username})` : 'CHZZK: 已连接';
+          const chzzkText = chzzk.username ? `CHZZK · ${chzzk.username}` : 'CHZZK';
           badgeChzzk.title = chzzkText;
           badgeChzzk.querySelector('.name').textContent = chzzkText;
           badgeChzzk.onclick = null;
         } else {
           badgeChzzk.className = 'acc-badge';
-          badgeChzzk.title = '点击登录 Chzzk';
-          badgeChzzk.querySelector('.name').textContent = 'CHZZK: 未登录';
+          badgeChzzk.title = '登录 CHZZK';
+          badgeChzzk.querySelector('.name').textContent = '登录 CHZZK';
           badgeChzzk.onclick = () => window.open('https://chzzk.naver.com', '_blank');
         }
 
         if (cime.isLoggedIn) {
           badgeCime.className = 'acc-badge online';
-          const cimeText = cime.username ? `CI.ME: 已连接 (${cime.username})` : 'CI.ME: 已连接';
+          const cimeText = cime.username ? `CI.ME · ${cime.username}` : 'CI.ME';
           badgeCime.title = cimeText;
           badgeCime.querySelector('.name').textContent = cimeText;
           badgeCime.onclick = null;
         } else {
           badgeCime.className = 'acc-badge';
-          badgeCime.title = '点击登录 CI.ME';
-          badgeCime.querySelector('.name').textContent = 'CI.ME: 未登录';
+          badgeCime.title = '登录 CI.ME';
+          badgeCime.querySelector('.name').textContent = '登录 CI.ME';
           badgeCime.onclick = () => window.open('https://ci.me', '_blank');
         }
       }
@@ -3665,6 +3660,23 @@ class AppHub {
     }, durationMs);
   }
 
+  mergeFollowingsWithFallback(incomingList, errors = {}) {
+    const safeIncoming = Array.isArray(incomingList) ? incomingList : [];
+    if (!this.followings || this.followings.length === 0 || !errors || Object.keys(errors).length === 0) {
+      return safeIncoming;
+    }
+    const merged = [...safeIncoming];
+    for (const platform of ['soop', 'chzzk', 'cime']) {
+      if (errors[platform] && !merged.some((item) => item.platform === platform)) {
+        const cachedPlatformItems = this.followings.filter((item) => item.platform === platform);
+        if (cachedPlatformItems.length > 0) {
+          merged.push(...cachedPlatformItems);
+        }
+      }
+    }
+    return merged;
+  }
+
   async syncFollowings() {
     const syncText = document.getElementById('sync-btn-text');
     syncText.textContent = '同步中...';
@@ -3675,7 +3687,7 @@ class AppHub {
       syncText.textContent = '同步关注';
 
       if (res && res.success && res.data) {
-        this.followings = res.data;
+        this.followings = this.mergeFollowingsWithFallback(res.data, res.details?.errors);
         this.renderStreamerList();
         this.updateCounts();
         this.startAutoRefresh(); // 重置自动轮询间隔
@@ -3699,9 +3711,10 @@ class AppHub {
   silentRefreshFollowings() {
     chrome.runtime.sendMessage({ action: 'SYNC_FOLLOWINGS' }, (res) => {
       if (res && res.success && res.data) {
+        const nextFollowings = this.mergeFollowingsWithFallback(res.data, res.details?.errors);
         const oldSign = JSON.stringify(this.followings.map((f) => `${f.channelId}_${f.isLive}_${f.title}_${f.viewers}`));
-        const newSign = JSON.stringify(res.data.map((f) => `${f.channelId}_${f.isLive}_${f.title}_${f.viewers}`));
-        this.followings = res.data;
+        const newSign = JSON.stringify(nextFollowings.map((f) => `${f.channelId}_${f.isLive}_${f.title}_${f.viewers}`));
+        this.followings = nextFollowings;
         if (oldSign !== newSign) {
           this.renderStreamerList();
           this.updateCounts();
@@ -3777,12 +3790,11 @@ class AppHub {
             <span class="streamer-title-name">${item.streamer || item.channelId}</span>
             ${item.isLive ? `<span class="viewers-badge">${item.viewers ? item.viewers + ' 人' : '直播'}</span>` : ''}
           </div>
-          <div class="stream-sub-title">${item.title || (item.isLive ? '正在直播' : '离线')}</div>
+          <div class="stream-sub-title">${item.title || ''}</div>
         </div>
 
         <div class="card-hover-actions">
-          <button class="card-btn btn-play-new" title="加入或新建窗口播放">播放</button>
-          <button class="card-btn btn-copy" title="复制 M3U8 直链 (点击选择 CDN)">直链</button>
+          <button class="card-btn btn-copy" title="复制直链">直链</button>
         </div>
       `;
 

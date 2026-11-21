@@ -41,6 +41,7 @@ export class DanmakuEngine {
     this.containerEl = null;
     this.btnEl = null;
     this.menuEl = null;
+    this._onDocClick = null;
 
     this.initUI();
   }
@@ -121,7 +122,6 @@ export class DanmakuEngine {
     menu.innerHTML = `
       <div class="sub-menu-header">
         <span class="sub-menu-title">弹幕设置</span>
-        <span class="sub-menu-status" id="danmaku-status-${this.slot.slotId}">${this.enabled ? '已开启' : '已关闭'}</span>
       </div>
       <div class="sub-menu-group">
         <label class="sub-group-label">不透明度</label>
@@ -135,25 +135,25 @@ export class DanmakuEngine {
       <div class="sub-menu-group">
         <label class="sub-group-label">字号</label>
         <div class="sub-options" id="danmaku-size-opts-${this.slot.slotId}">
-          <button class="sub-opt-btn ${this.fontSize === 16 ? 'active' : ''}" data-val="16">小 (16px)</button>
-          <button class="sub-opt-btn ${this.fontSize === 20 ? 'active' : ''}" data-val="20">中 (20px)</button>
-          <button class="sub-opt-btn ${this.fontSize === 24 ? 'active' : ''}" data-val="24">大 (24px)</button>
+          <button class="sub-opt-btn ${this.fontSize === 16 ? 'active' : ''}" data-val="16">小</button>
+          <button class="sub-opt-btn ${this.fontSize === 20 ? 'active' : ''}" data-val="20">中</button>
+          <button class="sub-opt-btn ${this.fontSize === 24 ? 'active' : ''}" data-val="24">大</button>
         </div>
       </div>
       <div class="sub-menu-group">
         <label class="sub-group-label">速度</label>
         <div class="sub-options" id="danmaku-speed-opts-${this.slot.slotId}">
-          <button class="sub-opt-btn ${this.speed === 8.5 ? 'active' : ''}" data-val="8.5">慢速 (8.5s)</button>
-          <button class="sub-opt-btn ${this.speed === 6.5 ? 'active' : ''}" data-val="6.5">标准 (6.5s)</button>
-          <button class="sub-opt-btn ${this.speed === 4.8 ? 'active' : ''}" data-val="4.8">极速 (4.8s)</button>
+          <button class="sub-opt-btn ${this.speed === 8.5 ? 'active' : ''}" data-val="8.5">慢</button>
+          <button class="sub-opt-btn ${this.speed === 6.5 ? 'active' : ''}" data-val="6.5">标准</button>
+          <button class="sub-opt-btn ${this.speed === 4.8 ? 'active' : ''}" data-val="4.8">快</button>
         </div>
       </div>
       <div class="sub-menu-group">
         <label class="sub-group-label">区域</label>
         <div class="sub-options" id="danmaku-area-opts-${this.slot.slotId}">
-          <button class="sub-opt-btn ${this.screenArea === 0.5 ? 'active' : ''}" data-val="0.5">半屏 (50%)</button>
-          <button class="sub-opt-btn ${this.screenArea === 0.8 ? 'active' : ''}" data-val="0.8">大部 (80%)</button>
-          <button class="sub-opt-btn ${this.screenArea === 1.0 ? 'active' : ''}" data-val="1.0">全屏 (100%)</button>
+          <button class="sub-opt-btn ${this.screenArea === 0.5 ? 'active' : ''}" data-val="0.5">半屏</button>
+          <button class="sub-opt-btn ${this.screenArea === 0.8 ? 'active' : ''}" data-val="0.8">80%</button>
+          <button class="sub-opt-btn ${this.screenArea === 1.0 ? 'active' : ''}" data-val="1.0">全屏</button>
         </div>
       </div>
       <div class="sub-menu-group">
@@ -287,11 +287,12 @@ export class DanmakuEngine {
       e.stopPropagation();
     });
 
-    document.addEventListener('click', (e) => {
+    this._onDocClick = (e) => {
       if (this.menuEl && !this.menuEl.contains(e.target) && e.target !== this.btnEl) {
         this.menuEl.classList.remove('active');
       }
-    });
+    };
+    document.addEventListener('click', this._onDocClick);
   }
 
   showSettingsMenu(x = null, y = null) {
@@ -320,11 +321,15 @@ export class DanmakuEngine {
     if (this.containerEl) {
       this.containerEl.style.display = this.enabled ? 'block' : 'none';
       if (!this.enabled) {
+        const children = Array.from(this.containerEl.children);
+        for (const child of children) {
+          this.recycleDanmakuElement(child);
+        }
         this.containerEl.innerHTML = '';
+        this.tracks = [];
       }
     }
-    const statusEl = this.menuEl?.querySelector(`#danmaku-status-${this.slot.slotId}`);
-    if (statusEl) statusEl.textContent = this.enabled ? '已开启' : '已关闭';
+    this.slot.manager?.saveState?.();
   }
 
   updateButtonState() {
@@ -750,9 +755,12 @@ export class DanmakuEngine {
           clearInterval(this.pingTimer);
           this.pingTimer = null;
         }
-        if (this.enabled && this.activeSocket === ws) {
+        const shouldKeepAlive = this.enabled || this.slot.subtitleEngine?.enabled || this.slot.superChatEngine?.enabled;
+        if (shouldKeepAlive && this.activeSocket === ws) {
           this.reconnectTimer = setTimeout(() => {
-            if (this.enabled) this.startSoopChat(streamData);
+            if (this.enabled || this.slot.subtitleEngine?.enabled || this.slot.superChatEngine?.enabled) {
+              this.startSoopChat(streamData);
+            }
           }, 6000);
         }
       };
@@ -1138,9 +1146,12 @@ export class DanmakuEngine {
           clearInterval(this.pingTimer);
           this.pingTimer = null;
         }
-        if (this.enabled && this.activeSocket === ws) {
+        const shouldKeepAlive = this.enabled || this.slot.subtitleEngine?.enabled || this.slot.superChatEngine?.enabled;
+        if (shouldKeepAlive && this.activeSocket === ws) {
           this.reconnectTimer = setTimeout(() => {
-            if (this.enabled) this.startChzzkChat(streamData);
+            if (this.enabled || this.slot.subtitleEngine?.enabled || this.slot.superChatEngine?.enabled) {
+              this.startChzzkChat(streamData);
+            }
           }, 6000);
         }
       };
@@ -1383,6 +1394,10 @@ export class DanmakuEngine {
 
   destroy() {
     this.stop();
+    if (this._onDocClick) {
+      document.removeEventListener('click', this._onDocClick);
+      this._onDocClick = null;
+    }
     if (this.menuEl) {
       this.menuEl.remove();
       this.menuEl = null;

@@ -81,7 +81,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     case 'SYNC_FOLLOWINGS':
       AccountManager.syncAllFollowings()
         .then((res) => {
-          if (res.all && res.all.length > 0) {
+          const hasErrors = res.details?.errors && Object.keys(res.details.errors).length > 0;
+          if (res.all && (res.all.length > 0 || !hasErrors)) {
             chrome.storage.local.set({ syncedFollowings: res.all, lastSyncedAt: Date.now() });
           }
           sendResponse({ success: true, data: res.all, details: res.details });

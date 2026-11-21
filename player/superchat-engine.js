@@ -8,13 +8,14 @@ export class SuperChatEngine {
     this.enabled = this.loadEnabledState();
     this.history = [];
     this.maxHistory = 200;
-    this.maxFloatingCards = 3;
     this.filterType = 'all'; // 'all' | 'donation' | 'subscription'
 
     this.overlayEl = null;
+    this.subAreaEl = null;
+    this.scListEl = null;
     this.btnEl = null;
-    this.badgeEl = null;
     this.panelEl = null;
+    this._onDocClick = null;
 
     this.initUI();
   }
@@ -40,8 +41,24 @@ export class SuperChatEngine {
       const overlay = document.createElement('div');
       overlay.className = 'slot-sc-overlay';
       overlay.id = `sc-overlay-${this.slot.slotId}`;
+
+      const subArea = document.createElement('div');
+      subArea.className = 'slot-sub-area';
+      subArea.id = `sc-sub-area-${this.slot.slotId}`;
+
+      const scList = document.createElement('div');
+      scList.className = 'slot-sc-list';
+      scList.id = `sc-list-area-${this.slot.slotId}`;
+      scList.addEventListener('wheel', (e) => {
+        e.stopPropagation();
+      }, { passive: true });
+
+      overlay.appendChild(subArea);
+      overlay.appendChild(scList);
       videoContainer.appendChild(overlay);
       this.overlayEl = overlay;
+      this.subAreaEl = subArea;
+      this.scListEl = scList;
     }
 
     const controlsRight = this.slot.dom?.querySelector('.controls-right');
@@ -57,7 +74,6 @@ export class SuperChatEngine {
           <path d="M12 6v1.5M12 16.5V18"/>
         </svg>
         <span class="btn-sc-tag" id="btn-sc-tag-${this.slot.slotId}">SC</span>
-        <span class="ctrl-sc-badge" id="ctrl-sc-badge-${this.slot.slotId}" style="display:none;">0</span>
       `;
 
       const btnDanmaku = this.slot.dom.querySelector(`#btn-danmaku-${this.slot.slotId}`);
@@ -70,7 +86,6 @@ export class SuperChatEngine {
       }
 
       this.btnEl = btn;
-      this.badgeEl = btn.querySelector(`#ctrl-sc-badge-${this.slot.slotId}`);
 
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
@@ -94,7 +109,7 @@ export class SuperChatEngine {
     panel.id = `sc-history-panel-${this.slot.slotId}`;
     panel.innerHTML = `
       <div class="sc-panel-header">
-        <span class="sc-panel-title">打赏记录 (<span id="sc-panel-count-${this.slot.slotId}">0</span>)</span>
+        <span class="sc-panel-title">打赏记录</span>
         <div class="sc-panel-actions">
           <button class="sc-filter-btn active" data-filter="all">全部</button>
           <button class="sc-filter-btn" data-filter="donation">打赏</button>
@@ -125,26 +140,42 @@ export class SuperChatEngine {
       clearBtn.addEventListener('click', (e) => {
         e.stopPropagation();
         this.history = [];
-        this.updateBadge();
         this.renderHistoryPanel();
       });
     }
 
-    document.addEventListener('click', (e) => {
+    this._onDocClick = (e) => {
       if (this.panelEl && this.panelEl.classList.contains('active')) {
         if (!this.panelEl.contains(e.target) && e.target !== this.btnEl && !this.btnEl?.contains(e.target)) {
           this.panelEl.classList.remove('active');
         }
       }
+    };
+    document.addEventListener('click', this._onDocClick);
+  }
+
+  clearFloatingCards() {
+    if (!this.overlayEl) return;
+    this.overlayEl.querySelectorAll('.yt-sc-card').forEach((card) => {
+      if (card._dismissTimer) {
+        clearTimeout(card._dismissTimer);
+        card._dismissTimer = null;
+      }
+      if (card._removeTimer) {
+        clearTimeout(card._removeTimer);
+        card._removeTimer = null;
+      }
     });
+    if (this.subAreaEl) this.subAreaEl.innerHTML = '';
+    if (this.scListEl) this.scListEl.innerHTML = '';
   }
 
   toggle() {
     this.enabled = !this.enabled;
     this.saveEnabledState();
     this.updateButtonState();
-    if (!this.enabled && this.overlayEl) {
-      this.overlayEl.innerHTML = '';
+    if (!this.enabled) {
+      this.clearFloatingCards();
     }
   }
 
@@ -176,17 +207,14 @@ export class SuperChatEngine {
 
   reset() {
     this.history = [];
-    if (this.overlayEl) {
-      this.overlayEl.innerHTML = '';
-    }
-    this.updateBadge();
+    this.clearFloatingCards();
     if (this.panelEl?.classList.contains('active')) {
       this.renderHistoryPanel();
     }
   }
 
   /**
-   * 根据打赏类型与金额计算 YouTube SuperChat 配色等级
+   * 根据打赏类型与金额计算 YouTube SuperChat 配色等级及显示时长
    */
   static getYouTubeTier(event) {
     if (event.type === 'subscription' || event.type === 'gift') {
@@ -195,12 +223,12 @@ export class SuperChatEngine {
         headerBg: '#0b8043',
         bodyBg: '#0f9d58',
         textColor: '#ffffff',
-        durationMs: 7000
+        durationMs: 5000
       };
     }
 
     // 统一换算为等效 KRW 价值: Chzzk 1 치즈 ≈ 1 KRW, SOOP 1 별풍선 ≈ 100 KRW
-    const rawAmount = Number(event.amount) || 0;
+    const rawAmount = Number(event.amount ?? event.rawAmount) || 0;
     const krwValue = event.platform === 'soop' ? rawAmount * 100 : rawAmount;
 
     if (krwValue >= 100000) {
@@ -209,7 +237,7 @@ export class SuperChatEngine {
         headerBg: '#c2185b',
         bodyBg: '#e91e63',
         textColor: '#ffffff',
-        durationMs: 15000
+        durationMs: 120000
       };
     }
     if (krwValue >= 50000) {
@@ -218,7 +246,7 @@ export class SuperChatEngine {
         headerBg: '#e65100',
         bodyBg: '#f57c00',
         textColor: '#ffffff',
-        durationMs: 12000
+        durationMs: 60000
       };
     }
     if (krwValue >= 10000) {
@@ -227,7 +255,7 @@ export class SuperChatEngine {
         headerBg: '#f57f17',
         bodyBg: '#ffb300',
         textColor: '#111827',
-        durationMs: 10000
+        durationMs: 35000
       };
     }
     if (krwValue >= 5000) {
@@ -236,7 +264,7 @@ export class SuperChatEngine {
         headerBg: '#00838f',
         bodyBg: '#00acc1',
         textColor: '#ffffff',
-        durationMs: 8000
+        durationMs: 20000
       };
     }
     return {
@@ -244,7 +272,7 @@ export class SuperChatEngine {
       headerBg: '#1565c0',
       bodyBg: '#1e88e5',
       textColor: '#ffffff',
-      durationMs: 6500
+      durationMs: 10000
     };
   }
 
@@ -257,7 +285,7 @@ export class SuperChatEngine {
       platform: rawEvent.platform || this.slot.currentStreamData?.platform || 'chzzk',
       sender: String(rawEvent.sender || '观众').trim(),
       avatar: rawEvent.avatar || '',
-      amount: Number(rawEvent.amount) || 0,
+      amount: Number(rawEvent.amount ?? rawEvent.rawAmount) || 0,
       amountLabel: String(rawEvent.amountLabel || '').trim(),
       message: String(rawEvent.message || '').trim(),
       time: rawEvent.time || Date.now(),
@@ -269,7 +297,6 @@ export class SuperChatEngine {
     if (this.history.length > this.maxHistory) {
       this.history.length = this.maxHistory;
     }
-    this.updateBadge();
 
     if (this.panelEl?.classList.contains('active')) {
       this.renderHistoryPanel();
@@ -278,13 +305,6 @@ export class SuperChatEngine {
     if (this.enabled) {
       this.showFloatingCard(record);
     }
-  }
-
-  updateBadge() {
-    if (!this.badgeEl) return;
-    const count = this.history.length;
-    this.badgeEl.textContent = count > 99 ? '99+' : String(count);
-    this.badgeEl.style.display = count > 0 ? 'inline-block' : 'none';
   }
 
   buildCardHtml(record, isHistory = false) {
@@ -330,15 +350,8 @@ export class SuperChatEngine {
   showFloatingCard(record) {
     if (!this.overlayEl) return;
 
-    while (this.overlayEl.childElementCount >= this.maxFloatingCards) {
-      const oldest = this.overlayEl.firstElementChild;
-      if (oldest) {
-        if (oldest._dismissTimer) clearTimeout(oldest._dismissTimer);
-        oldest.remove();
-      } else {
-        break;
-      }
-    }
+    const isSub = record.type === 'subscription' || record.type === 'gift';
+    const targetContainer = isSub ? (this.subAreaEl || this.overlayEl) : (this.scListEl || this.overlayEl);
 
     const card = document.createElement('div');
     card.className = `yt-sc-card ${record.tier.name}`;
@@ -346,9 +359,12 @@ export class SuperChatEngine {
 
     const closeBtn = card.querySelector('.yt-sc-close');
     const dismiss = () => {
-      if (card._dismissTimer) clearTimeout(card._dismissTimer);
+      if (card._dismissTimer) {
+        clearTimeout(card._dismissTimer);
+        card._dismissTimer = null;
+      }
       card.classList.add('leaving');
-      setTimeout(() => card.remove(), 220);
+      card._removeTimer = setTimeout(() => card.remove(), 220);
     };
 
     if (closeBtn) {
@@ -358,13 +374,17 @@ export class SuperChatEngine {
       });
     }
 
-    this.overlayEl.appendChild(card);
-    card._dismissTimer = setTimeout(dismiss, record.tier.durationMs || 8000);
+    targetContainer.appendChild(card);
+    if (!isSub && this.scListEl) {
+      this.scListEl.scrollTop = this.scListEl.scrollHeight;
+    }
+
+    const duration = isSub ? 5000 : (record.tier.durationMs || 10000);
+    card._dismissTimer = setTimeout(dismiss, duration);
   }
 
   renderHistoryPanel() {
     if (!this.panelEl) return;
-    const countEl = this.panelEl.querySelector(`#sc-panel-count-${this.slot.slotId}`);
     const listEl = this.panelEl.querySelector(`#sc-panel-list-${this.slot.slotId}`);
     if (!listEl) return;
 
@@ -373,8 +393,6 @@ export class SuperChatEngine {
       if (this.filterType === 'subscription') return item.type === 'subscription' || item.type === 'gift';
       return item.type === 'donation';
     });
-
-    if (countEl) countEl.textContent = String(this.history.length);
 
     if (filtered.length === 0) {
       listEl.innerHTML = `<div class="sc-panel-empty">暂无打赏记录</div>`;
@@ -391,6 +409,11 @@ export class SuperChatEngine {
   }
 
   destroy() {
+    this.clearFloatingCards();
+    if (this._onDocClick) {
+      document.removeEventListener('click', this._onDocClick);
+      this._onDocClick = null;
+    }
     if (this.overlayEl) this.overlayEl.remove();
     if (this.panelEl) this.panelEl.remove();
   }

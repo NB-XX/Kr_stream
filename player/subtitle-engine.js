@@ -69,6 +69,7 @@ export class SubtitleEngine {
     this.secEl = null;
     this.btnEl = null;
     this.menuEl = null;
+    this._onDocClick = null;
 
     this.initUI();
   }
@@ -158,7 +159,6 @@ export class SubtitleEngine {
             ${SUBTITLE_LANGS.map(lang => `
               <button class="bili-lang-item ${this.primaryLang === lang.id ? 'active' : ''}" data-lang="${lang.id}" title="${lang.label}">
                 <span class="bili-lang-text">${lang.label}</span>
-                <span class="bili-ai-tag">AI</span>
               </button>
             `).join('')}
           </div>
@@ -168,7 +168,6 @@ export class SubtitleEngine {
             ${SUBTITLE_LANGS.map(lang => `
               <button class="bili-lang-item ${this.secondaryLang === lang.id ? 'active' : ''}" data-lang="${lang.id}" title="${lang.label}">
                 <span class="bili-lang-text">${lang.label}</span>
-                <span class="bili-ai-tag">AI</span>
               </button>
             `).join('')}
           </div>
@@ -196,10 +195,10 @@ export class SubtitleEngine {
         <div class="bili-settings-group">
           <div class="bili-settings-label">字幕字号</div>
           <div class="bili-pill-group" id="bili-size-group-${this.slot.slotId}">
-            <button class="bili-pill-btn ${this.fontSize === 'small' ? 'active' : ''}" data-size="small">小 (12px)</button>
-            <button class="bili-pill-btn ${this.fontSize === 'medium' ? 'active' : ''}" data-size="medium">中 (15px)</button>
-            <button class="bili-pill-btn ${this.fontSize === 'large' ? 'active' : ''}" data-size="large">大 (18px)</button>
-            <button class="bili-pill-btn ${this.fontSize === 'xlarge' ? 'active' : ''}" data-size="xlarge">特大 (22px)</button>
+            <button class="bili-pill-btn ${this.fontSize === 'small' ? 'active' : ''}" data-size="small">小</button>
+            <button class="bili-pill-btn ${this.fontSize === 'medium' ? 'active' : ''}" data-size="medium">中</button>
+            <button class="bili-pill-btn ${this.fontSize === 'large' ? 'active' : ''}" data-size="large">大</button>
+            <button class="bili-pill-btn ${this.fontSize === 'xlarge' ? 'active' : ''}" data-size="xlarge">特大</button>
           </div>
         </div>
 
@@ -226,8 +225,8 @@ export class SubtitleEngine {
         <div class="bili-settings-group">
           <div class="bili-settings-label">字幕对齐</div>
           <div class="bili-pill-group cols-2" id="bili-align-group-${this.slot.slotId}">
-            <button class="bili-pill-btn ${this.textAlign === 'center' ? 'active' : ''}" data-align="center">居中对齐</button>
-            <button class="bili-pill-btn ${this.textAlign === 'left' ? 'active' : ''}" data-align="left">靠左对齐</button>
+            <button class="bili-pill-btn ${this.textAlign === 'center' ? 'active' : ''}" data-align="center">居中</button>
+            <button class="bili-pill-btn ${this.textAlign === 'left' ? 'active' : ''}" data-align="left">靠左</button>
           </div>
         </div>
       </div>
@@ -329,11 +328,12 @@ export class SubtitleEngine {
       }, 250);
     });
 
-    document.addEventListener('click', (e) => {
+    this._onDocClick = (e) => {
       if (this.menuEl && !this.menuEl.contains(e.target) && (!this.btnEl || !this.btnEl.contains(e.target))) {
         this.menuEl.classList.remove('active');
       }
-    });
+    };
+    document.addEventListener('click', this._onDocClick);
   }
 
   showSettingsMenu(e) {
@@ -1183,6 +1183,10 @@ export class SubtitleEngine {
 
   destroy() {
     this.stop();
+    if (this._onDocClick) {
+      document.removeEventListener('click', this._onDocClick);
+      this._onDocClick = null;
+    }
     if (this.menuEl) {
       this.menuEl.remove();
       this.menuEl = null;

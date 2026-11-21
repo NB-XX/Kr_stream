@@ -174,15 +174,6 @@ body, html {
   letter-spacing: 0.02em;
 }
 
-.brand-version {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--fg-muted);
-  border: 1px solid var(--border-default);
-  padding: 0 3px;
-  border-radius: var(--radius-xs);
-}
-
 .btn-icon {
   background: transparent;
   border: 1px solid transparent;
@@ -212,21 +203,6 @@ body, html {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.accounts-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.section-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--fg-muted);
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
 }
 
 .btn-link {
@@ -656,12 +632,6 @@ body, html {
   font-weight: 500;
 }
 
-.card-btn.btn-play-new {
-  background: var(--accent-primary);
-  color: var(--fg-inverse);
-  font-weight: 600;
-}
-
 .card-btn.btn-copy {
   background: var(--bg-surface-0);
   border-color: var(--border-default);
@@ -752,15 +722,6 @@ body, html {
   padding: 2px;
   border-radius: var(--radius-sm);
   gap: 1px;
-}
-
-.layout-label {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  font-weight: 700;
-  color: var(--fg-muted);
-  padding: 0 6px;
-  letter-spacing: 0.06em;
 }
 
 .preset-btn {
@@ -1122,16 +1083,6 @@ video {
   gap: 3px;
 }
 
-.comic-tag {
-  font-family: var(--font-mono);
-  font-size: 9px;
-  letter-spacing: 1px;
-  color: var(--accent-primary);
-  border: 1px solid rgba(0, 174, 236, 0.3);
-  padding: 1px 5px;
-  border-radius: 2px;
-}
-
 .comic-title {
   font-size: 13px;
   font-weight: 600;
@@ -1373,17 +1324,6 @@ video {
 
 .ctrl-btn-tag, .ctrl-replay-tag, .btn-sub-history-tag, .btn-subs-tag {
   font-size: 10px;
-}
-
-.ctrl-sub-badge {
-  background: var(--bg-surface-0);
-  color: var(--fg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-xs);
-  padding: 0 3px;
-  font-size: 9px;
-  font-family: var(--font-mono);
-  margin-left: 2px;
 }
 
 /* 窗口悬浮消息提示 (Toast) */
@@ -1789,18 +1729,6 @@ video {
   max-width: 78px;
 }
 
-.bili-ai-tag {
-  font-size: 9px;
-  line-height: 12px;
-  padding: 0 3px;
-  color: #00aeec;
-  border: 1px solid rgba(0, 174, 236, 0.4);
-  border-radius: 2px;
-  font-family: monospace;
-  font-weight: 600;
-  letter-spacing: 0.2px;
-}
-
 /* Footer Link */
 .bili-sub-footer-link {
   display: flex;
@@ -2038,12 +1966,6 @@ video {
   letter-spacing: 0.3px;
 }
 
-.danmaku-settings-menu .sub-menu-status {
-  font-size: 11px;
-  font-weight: 500;
-  color: #00aeec;
-}
-
 .danmaku-settings-menu .sub-menu-group {
   display: flex;
   flex-direction: column;
@@ -2133,22 +2055,6 @@ video {
   font-weight: 600;
   color: #f4f4f5;
   letter-spacing: 0.3px;
-}
-
-.catchup-settings-menu .sub-menu-status {
-  font-size: 11px;
-  font-weight: 500;
-  color: #a1a1aa;
-}
-
-.catchup-settings-menu .catchup-menu-notice {
-  font-size: 10px;
-  color: #eab308;
-  background: rgba(234, 179, 8, 0.08);
-  border: 1px solid rgba(234, 179, 8, 0.2);
-  border-radius: 2px;
-  padding: 4px 6px;
-  line-height: 1.35;
 }
 
 .catchup-settings-menu .sub-menu-group {
@@ -2306,13 +2212,6 @@ video {
   display: flex;
   align-items: center;
   gap: 4px;
-}
-
-.selected-count-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--fg-secondary);
-  margin-left: 2px;
 }
 
 .drawer-sub-list {
@@ -2918,12 +2817,52 @@ body.mode-standalone .stream-slot {
   z-index: 25;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-width: 280px;
+  gap: 8px;
+  width: 268px;
+  max-width: calc(100% - 24px);
   pointer-events: none;
 }
 
+.slot-sub-area {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.slot-sub-area:empty {
+  display: none;
+}
+
+.slot-sc-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  pointer-events: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.28) transparent;
+  padding-right: 2px;
+}
+
+.slot-sc-list:empty {
+  display: none;
+}
+
+.slot-sc-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.slot-sc-list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 4px;
+}
+
 .yt-sc-card {
+  flex-shrink: 0;
   pointer-events: auto;
   border-radius: 8px;
   overflow: hidden;
@@ -3056,16 +2995,6 @@ body.mode-standalone .stream-slot {
 .btn-sc.active {
   color: #fbbf24 !important;
   background: rgba(251, 191, 36, 0.12) !important;
-}
-
-.ctrl-sc-badge {
-  background: rgba(251, 191, 36, 0.22);
-  color: #fbbf24;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  padding: 0 4px;
-  border-radius: 9999px;
-  line-height: 14px;
 }
 
 /* 打赏记录弹窗面板 */

@@ -448,32 +448,57 @@ async function runTests() {
   assert.strictEqual(parsedCime.title, '[하나비] 체체체체체리시마이럽');
   assert(parsedCime.openTime > 0, 'openTime must be parsed from openedAt');
 
-  // Verify player.js renders CI.ME username uniformly
+  // Verify player.js renders CI.ME & Chzzk usernames cleanly without redundant connected label
   const latestPlayerJs = fs.readFileSync('player/player.js', 'utf8');
-  assert(latestPlayerJs.includes('CI.ME: 已连接 (${cime.username})'), 'checkAccounts must display CI.ME logged-in username');
+  assert(latestPlayerJs.includes('CI.ME · ${cime.username}'), 'checkAccounts must display CI.ME logged-in username');
+  assert(latestPlayerJs.includes('CHZZK · ${chzzk.username}'), 'checkAccounts must display CHZZK logged-in username');
 
   // Verify verbose AI-style descriptive texts have been stripped across all UI files
   const latestPlayerHtml = fs.readFileSync('player/player.html', 'utf8');
   const latestDanmakuJs = fs.readFileSync('player/danmaku-engine.js', 'utf8');
+  const latestSubtitleJs = fs.readFileSync('player/subtitle-engine.js', 'utf8');
   const latestPopupHtml = fs.readFileSync('popup/popup.html', 'utf8');
   assert(!latestDanmakuJs.includes('GPU 硬件加速与防抖动分轨'), 'Danmaku settings must not show verbose filler text');
   assert(!latestPlayerJs.includes('硬性保护：停止阈值'), 'Catchup menu must not show verbose notice text');
+  assert(!latestPlayerHtml.includes('PLATFORM ACCOUNTS') && !latestPlayerHtml.includes('brand-version'), 'Sidebar must not show decorative badges or section headers');
+  assert(!latestSubtitleJs.includes('bili-ai-tag'), 'Subtitle language buttons must not show repetitive AI tags');
   assert(latestPlayerJs.includes('comic-panels'), 'Empty slot 3-step comic guide must be preserved');
   assert(!latestPlayerHtml.includes('状态监控轮询中'), 'Sidebar must not show polling status filler');
   assert(!latestPopupHtml.includes('setting-desc') && !latestPopupHtml.includes('tips-box'), 'Popup must not show verbose setting descriptions or tips box');
-  console.log('  Pass: Chzzk/CI.ME real usernames, CI.ME following parser, and minimalist UI verified.');
+
+  // Verify audited bug fixes 1-5
+  assert(latestDanmakuJs.includes('this.slot.subtitleEngine?.enabled || this.slot.superChatEngine?.enabled'), 'WS reconnect must stay active for subtitles and SuperChats when danmaku is disabled');
+  assert(latestPlayerJs.includes('mergeFollowingsWithFallback'), '20s polling must preserve cached platform followings on transient errors');
+  assert(latestPlayerJs.includes('this._onDocClickCatchup') && latestPlayerJs.includes("document.removeEventListener('click', this._onDocClickCatchup)"), 'StreamSlot destroy must remove document click listener');
+  assert(latestDanmakuJs.includes("document.removeEventListener('click', this._onDocClick)"), 'DanmakuEngine destroy must remove document click listener');
+  assert(latestSubtitleJs.includes("document.removeEventListener('click', this._onDocClick)"), 'SubtitleEngine destroy must remove document click listener');
+  assert(latestDanmakuJs.includes('recycleDanmakuElement(child)') && latestDanmakuJs.includes('saveState?.()'), 'Danmaku toggle must recycle elements and save state');
+  console.log('  Pass: Chzzk/CI.ME real usernames, minimalist UI, and audited bug fixes 1-5 verified.');
 
   console.log('[Test 20] YouTube-Style SuperChat / Gift / Subscription Banner & History Engine');
   const { SuperChatEngine } = await import('../player/superchat-engine.js');
 
-  // 1. Verify YouTube SC tier color mapping
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'subscription' }).name, 'sub-green', 'Subscriptions must use YouTube green tier');
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'gift' }).name, 'sub-green', 'Gifted subs must use YouTube green tier');
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 1000 }).name, 'sc-blue', '1,000 Cheese must map to sc-blue');
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 5000 }).name, 'sc-cyan', '5,000 Cheese must map to sc-cyan');
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 10000 }).name, 'sc-yellow', '10,000 Cheese must map to sc-yellow');
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 50000 }).name, 'sc-orange', '50,000 Cheese must map to sc-orange');
-  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 100000 }).name, 'sc-red', '100,000 Cheese must map to sc-red');
+  // 1. Verify YouTube SC tier color mapping & duration scaling
+  const subTier = SuperChatEngine.getYouTubeTier({ type: 'subscription' });
+  assert.strictEqual(subTier.name, 'sub-green', 'Subscriptions must use YouTube green tier');
+  assert.strictEqual(subTier.durationMs, 5000, 'Subscriptions must display for fixed 5000ms');
+  assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'gift' }).durationMs, 5000, 'Gifted subs must display for fixed 5000ms');
+
+  const tier1k = SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 1000 });
+  const tier5k = SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 5000 });
+  const tier10k = SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 10000 });
+  const tier50k = SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 50000 });
+  const tier100k = SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'chzzk', amount: 100000 });
+  assert.strictEqual(tier1k.name, 'sc-blue');
+  assert.strictEqual(tier1k.durationMs, 10000);
+  assert.strictEqual(tier5k.name, 'sc-cyan');
+  assert.strictEqual(tier5k.durationMs, 20000);
+  assert.strictEqual(tier10k.name, 'sc-yellow');
+  assert.strictEqual(tier10k.durationMs, 35000);
+  assert.strictEqual(tier50k.name, 'sc-orange');
+  assert.strictEqual(tier50k.durationMs, 60000);
+  assert.strictEqual(tier100k.name, 'sc-red');
+  assert.strictEqual(tier100k.durationMs, 120000);
   assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'soop', amount: 100 }).name, 'sc-yellow', '100 SOOP balloons (10,000 KRW) must map to sc-yellow');
   assert.strictEqual(SuperChatEngine.getYouTubeTier({ type: 'donation', platform: 'soop', amount: 1000 }).name, 'sc-red', '1000 SOOP balloons (100,000 KRW) must map to sc-red');
 
@@ -499,14 +524,19 @@ async function runTests() {
   assert(cardHtml.includes('yt-sc-header') && cardHtml.includes('yt-sc-body'), 'Card HTML must include header and body');
   assert(cardHtml.includes('测试金主') && cardHtml.includes('10,000 치즈') && cardHtml.includes('加油！'), 'Card HTML must include sender, amount, and message');
 
-  // 4. Verify wiring in player.js, danmaku-engine.js, and player.css
+  // 4. Verify separate sub/sc containers, no eviction, scrollable SC list, and WS wiring
+  const scEngineCode = fs.readFileSync('player/superchat-engine.js', 'utf8');
+  assert(scEngineCode.includes('slot-sub-area') && scEngineCode.includes('slot-sc-list'), 'SuperChatEngine must separate subscription and SC containers');
+  assert(!scEngineCode.includes('maxFloatingCards'), 'SuperChatEngine must not evict earlier SC cards');
+  assert(scEngineCode.includes("document.removeEventListener('click', this._onDocClick)"), 'SuperChatEngine destroy must remove document click listener');
   assert(latestPlayerJs.includes('SuperChatEngine'), 'player.js must wire SuperChatEngine');
   assert(latestDanmakuJs.includes('cmd === 93102'), 'danmaku-engine.js must parse Chzzk cmd 93102 donations/subscriptions');
   assert(latestDanmakuJs.includes("opcode === '0018'") && latestDanmakuJs.includes("opcode === '0091'"), 'danmaku-engine.js must parse SOOP balloon and subscription opcodes');
   const latestCss = fs.readFileSync('player/player.css', 'utf8');
-  assert(latestCss.includes('.slot-sc-overlay') && latestCss.includes('.yt-sc-card') && latestCss.includes('.sc-history-panel'), 'player.css must style top-left SC overlay, YouTube cards, and history panel');
+  assert(latestCss.includes('.slot-sc-overlay') && latestCss.includes('.slot-sub-area') && latestCss.includes('.slot-sc-list') && latestCss.includes('overflow-y: auto'), 'player.css must style separate sub area and scrollable SC list');
+  assert(latestCss.includes('.yt-sc-card') && latestCss.includes('.sc-history-panel'), 'player.css must style YouTube cards and history panel');
 
-  console.log('  Pass: YouTube-style SC tiers, display toggle, history logging, and WS integration verified.');
+  console.log('  Pass: Split subscription/SC regions, duration scaling, and WS integration verified.');
 
   console.log('\nAll integration tests passed successfully.');
 }
