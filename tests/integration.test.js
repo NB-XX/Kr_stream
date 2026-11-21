@@ -519,10 +519,35 @@ async function runTests() {
   assert.strictEqual(scEngine.history[0].avatar, 'https://example.com/avatar.png');
   assert.strictEqual(scEngine.history[0].message, '加油！');
 
-  // 3. Verify HTML escaping & card markup structure
+  // 3. Verify HTML escaping & card markup structure + SOOP special balloon image resolution
   const cardHtml = scEngine.buildCardHtml(scEngine.history[0], false);
   assert(cardHtml.includes('yt-sc-header') && cardHtml.includes('yt-sc-body'), 'Card HTML must include header and body');
   assert(cardHtml.includes('测试金主') && cardHtml.includes('10,000 치즈') && cardHtml.includes('加油！'), 'Card HTML must include sender, amount, and message');
+
+  const resolvedBalloonImg = danmakuEngine.resolveSoopBalloonImage({
+    bjId: 'gosegu2',
+    count: 1439,
+    fileName: 'gosegu2_1439',
+    isDefault: false
+  });
+  assert.strictEqual(
+    resolvedBalloonImg,
+    'https://static.file.sooplive.com/starballoon/story_m/gosegu2_1439.png',
+    'Signature balloon fileName must resolve to SOOP story_m image URL'
+  );
+  scEngine.handleEvent({
+    type: 'donation',
+    platform: 'soop',
+    sender: '바나나칩와작',
+    amount: 1439,
+    amountLabel: '별풍선 1,439개',
+    imageUrl: resolvedBalloonImg,
+    message: ''
+  });
+  const balloonCardHtml = scEngine.buildCardHtml(scEngine.history[0], true);
+  assert(balloonCardHtml.includes('<img class="yt-sc-balloon-img"'), 'SOOP special balloon SC card must render <img> tag');
+  assert(balloonCardHtml.includes('gosegu2_1439.png'), 'SOOP special balloon SC card must embed resolved image URL');
+  assert(!balloonCardHtml.includes('>gosegu2_1439<'), 'Raw balloon code must not be rendered as card text');
 
   // 4. Verify separate sub/sc containers, no eviction, scrollable SC list, and WS wiring
   const scEngineCode = fs.readFileSync('player/superchat-engine.js', 'utf8');

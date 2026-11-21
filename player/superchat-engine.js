@@ -287,6 +287,7 @@ export class SuperChatEngine {
       avatar: rawEvent.avatar || '',
       amount: Number(rawEvent.amount ?? rawEvent.rawAmount) || 0,
       amountLabel: String(rawEvent.amountLabel || '').trim(),
+      imageUrl: String(rawEvent.imageUrl || '').trim(),
       message: String(rawEvent.message || '').trim(),
       time: rawEvent.time || Date.now(),
       tier
@@ -330,8 +331,13 @@ export class SuperChatEngine {
       ? `<span class="yt-sc-time">${timeStr}</span>`
       : `<button class="yt-sc-close" type="button" title="关闭">&times;</button>`;
 
-    const bodyHtml = safeMsg
-      ? `<div class="yt-sc-body" style="background:${record.tier.bodyBg};color:${record.tier.textColor};">${safeMsg}</div>`
+    const mediaHtml = record.imageUrl
+      ? `<div class="yt-sc-media"><img class="yt-sc-balloon-img" src="${escapeHtml(record.imageUrl)}" alt="${safeAmount}" onerror="const m=this.closest('.yt-sc-media');if(m)m.remove();" /></div>`
+      : '';
+
+    const hasBodyContent = Boolean(mediaHtml || safeMsg);
+    const bodyHtml = hasBodyContent
+      ? `<div class="yt-sc-body" style="background:${record.tier.bodyBg};color:${record.tier.textColor};">${mediaHtml}${safeMsg ? `<div class="yt-sc-msg">${safeMsg}</div>` : ''}</div>`
       : '';
 
     return `

@@ -29,6 +29,8 @@ export class DanmakuEngine {
     // 表情映射缓存 (支持 Chzzk {:id:} 及 SOOP 签名表情与基础表情)
     this.emojiCache = new Map();
     this._soopManifestLoaded = false;
+    this.soopBalloonMap = new Map();
+    this._loadedBalloonChannels = new Set();
 
     // 弹幕轨道调度 (防止重叠碰撞)
     this.tracks = []; // 记录每个轨道的可用时间戳 (ms)
@@ -463,6 +465,87 @@ export class DanmakuEngine {
   }
 
   /**
+   * 加载 SOOP 主播专属特殊气球 / 签名气球图片配置
+   */
+  async loadSoopBalloonStorytelling(channelId) {
+    const cleanId = String(channelId || '').replace(/\(\d+\)$/, '').trim();
+    if (!cleanId || this._loadedBalloonChannels.has(cleanId)) return;
+    this._loadedBalloonChannels.add(cleanId);
+
+    const normalizeUrl = (url) => {
+      if (!url || typeof url !== 'string') return '';
+      return url.startsWith('//') ? `https:${url}` : url;
+    };
+
+    try {
+      const res = await fetch(
+        `https://live.sooplive.com/api/get_balloon_storytelling_info.php?szBjId=${encodeURIComponent(cleanId)}`,
+        {
+          headers: {
+            'Origin': 'https://play.sooplive.com',
+            'Referer': `https://play.sooplive.com/${encodeURIComponent(cleanId)}`
+          }
+        }
+      );
+      if (!res.ok) return;
+      const data = await res.json();
+
+      const registerItem = (item, isSignature = false) => {
+        const url = normalizeUrl(item?.imageUrl);
+        if (!url) return;
+        const numStr = item?.number !== undefined ? String(item.number).trim() : '';
+        const stemMatch = url.match(/\/([^\/?#]+)\.[a-z0-9]+(?:[?#].*)?$/i);
+        if (stemMatch && stemMatch[1]) {
+          this.soopBalloonMap.set(stemMatch[1], url);
+        }
+        if (numStr && cleanId) {
+          this.soopBalloonMap.set(`${cleanId}_${numStr}`, url);
+        }
+        if (numStr && !isSignature) {
+          this.soopBalloonMap.set(numStr, url);
+        }
+      };
+
+      for (const cat of (data?.categoryBalloons?.list || [])) {
+        for (const item of (cat?.list || [])) {
+          registerItem(item, false);
+        }
+      }
+      for (const item of (data?.mainBalloons?.list || [])) {
+        registerItem(item, true);
+      }
+    } catch (e) {}
+  }
+
+  resolveSoopBalloonImage({ bjId = '', count = 0, fileName = '', isDefault = false, urlModify = '' } = {}) {
+    const cleanBjId = String(bjId || '').replace(/\(\d+\)$/, '').trim();
+    const cleanFile = String(fileName || '').trim();
+    const cleanCount = count ? String(count) : '';
+
+    if (isDefault && !cleanFile) return '';
+
+    let resolvedUrl = '';
+    if (cleanFile && this.soopBalloonMap.has(cleanFile)) {
+      resolvedUrl = this.soopBalloonMap.get(cleanFile);
+    } else if (cleanBjId && cleanCount && this.soopBalloonMap.has(`${cleanBjId}_${cleanCount}`)) {
+      resolvedUrl = this.soopBalloonMap.get(`${cleanBjId}_${cleanCount}`);
+    } else if (!isDefault && cleanCount && this.soopBalloonMap.has(cleanCount)) {
+      resolvedUrl = this.soopBalloonMap.get(cleanCount);
+    } else if (!isDefault && cleanFile) {
+      if ((cleanBjId && cleanFile.includes(cleanBjId)) || cleanFile.includes('_') || cleanFile.includes('evt')) {
+        resolvedUrl = `https://static.file.sooplive.com/starballoon/story_m/${encodeURIComponent(cleanFile)}.png`;
+      } else {
+        resolvedUrl = `https://res.sooplive.com/new_player/items/m_balloon_${encodeURIComponent(cleanFile)}.png`;
+      }
+    }
+
+    if (resolvedUrl && urlModify && !resolvedUrl.includes('?')) {
+      resolvedUrl = `${resolvedUrl}?v=${encodeURIComponent(urlModify)}`;
+    }
+    return resolvedUrl;
+  }
+
+  /**
    * ==========================================
    * 1. SOOP 弹幕接入
    * ==========================================
@@ -508,9 +591,10 @@ export class DanmakuEngine {
 
     if (!chatDomain || !chatPort || !chatNo) return;
 
-    // 预加载当前主播的专属签名表情与官方默认表情
+    // 预加载当前主播的专属签名表情、官方默认表情与特殊气球图片配置
     this.initSoopManifest();
     this.loadSoopSignatureEmoticons(channelId);
+    this.loadSoopBalloonStorytelling(channelId);
 
     try {
       const STARTER = '\u001d\t';
@@ -638,19 +722,25 @@ export class DanmakuEngine {
             }
           }
 
-          // SOOP 打赏与订阅事件 (0018: 星球, 0033: 广告气球, 0091/0093: 订阅, 0108: 赠送订阅)
+          // SOOP 打赏与订阅事件 (0018: 星球, 0033: 广告气球/中继, 0091/0093: 订阅, 0108: 赠送订阅)
           if ((opcode === '0018' || opcode === '0033' || opcode === '0091' || opcode === '0093' || opcode === '0108') && this.slot.superChatEngine) {
             const rawParts = payload.split(SEPARATOR);
             const parts = rawParts[0] === '' ? rawParts.slice(1) : rawParts;
-            const rawSenderId = String(parts[1] || '').replace(/\([^)]*\)/g, '').trim();
-            const sender = parts[2] || rawSenderId || '观众';
+            const rawSenderId = opcode === '0033'
+              ? String(parts[3] || '').replace(/\([^)]*\)/g, '').trim()
+              : String(parts[1] || '').replace(/\([^)]*\)/g, '').trim();
+            const sender = (opcode === '0033' ? parts[4] : parts[2]) || rawSenderId || '观众';
             const avatar = rawSenderId.length >= 2
               ? `https://profile.img.sooplive.com/LOGO/${rawSenderId.slice(0, 2).toLowerCase()}/${rawSenderId}/${rawSenderId}.jpg`
               : '';
 
             if (opcode === '0018') {
+              const bjId = String(parts[0] || channelId || '').replace(/\(\d+\)$/, '').trim();
               const count = parseInt(parts[3], 10) || 1;
-              const rawMsg = parts[7] && !/^\d+$/.test(parts[7].trim()) ? parts[7].replace(/\r/gi, '').trim() : '';
+              const fileName = String(parts[7] || '').replace(/\r/gi, '').trim();
+              const isDefault = Number(parts[8]) === 1 || !fileName;
+              const urlModify = String(parts[13] || '').trim();
+              const imageUrl = this.resolveSoopBalloonImage({ bjId, count, fileName, isDefault, urlModify });
               this.slot.superChatEngine.handleEvent({
                 type: 'donation',
                 platform: 'soop',
@@ -658,17 +748,24 @@ export class DanmakuEngine {
                 avatar,
                 amount: count,
                 amountLabel: `별풍선 ${count.toLocaleString()}개`,
-                message: rawMsg
+                imageUrl,
+                message: ''
               });
             } else if (opcode === '0033') {
-              const count = parseInt(parts[3], 10) || parseInt(parts[4], 10) || 1;
+              const bjId = String(parts[1] || channelId || '').replace(/\(\d+\)$/, '').trim();
+              const count = parseInt(parts[5], 10) || parseInt(parts[3], 10) || 1;
+              const fileName = String(parts[8] || '').replace(/\r/gi, '').trim();
+              const isDefault = Number(parts[9]) === 1 || !fileName;
+              const urlModify = String(parts[14] || '').trim();
+              const imageUrl = this.resolveSoopBalloonImage({ bjId, count, fileName, isDefault, urlModify });
               this.slot.superChatEngine.handleEvent({
                 type: 'donation',
                 platform: 'soop',
                 sender,
                 avatar,
                 amount: count,
-                amountLabel: `애드벌룬 ${count.toLocaleString()}개`,
+                amountLabel: `별풍선 ${count.toLocaleString()}개`,
+                imageUrl,
                 message: ''
               });
             } else if (opcode === '0091' || opcode === '0093') {
